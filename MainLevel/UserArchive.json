@@ -1,0 +1,120 @@
+{
+    "UUID": "123e4567-e89b-12d3-a456-426614174000",
+    "DataClusters": [
+      {
+        "Title": "Cluster 1",
+        "DataEntries": [
+          {
+            "Title": "Entry 1",
+            "Location": [-10, 0, 0],
+            "DataAssets": [
+              {
+                "Title": "Model 1",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [-7.5, 0, 2.3],
+                  "rotation": [0, 0, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              },
+              {
+                "Title": "Model 2",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [-5.2, 0, 4.1],
+                  "rotation": [0, 45, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              }
+            ]
+          },
+          {
+            "Title": "Entry 2",
+            "Location": [10, 0, 0],
+            "DataAssets": [
+              {
+                "Title": "Model 1",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [3.4, 0, -6.0],
+                  "rotation": [0, 0, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              },
+              {
+                "Title": "Model 2",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [6.5, 0, -7.2],
+                  "rotation": [0, 45, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "Title": "Cluster 2",
+        "DataEntries": [
+          {
+            "Title": "Entry 1",
+            "Location": [0, 0, 10],
+            "DataAssets": [
+              {
+                "Title": "Model 1",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [-2.0, 0, 8.5],
+                  "rotation": [0, 0, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              },
+              {
+                "Title": "Model 2",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [1.7, 0, 9.9],
+                  "rotation": [0, 45, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              }
+            ]
+          },
+          {
+            "Title": "Entry 2",
+            "Location": [0, 0, -10],
+            "DataAssets": [
+              {
+                "Title": "Model 1",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [9.5, 0, -1.3],
+                  "rotation": [0, 0, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              },
+              {
+                "Title": "Model 2",
+                "Prompt": "Load DamagedHelmet",
+                "transform": {
+                  "position": [8.2, 0, -3.4],
+                  "rotation": [0, 45, 0],
+                  "scale": [1, 1, 1]
+                },
+                "URL": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Embedded/DamagedHelmet.gltf"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+  
