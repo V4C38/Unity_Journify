@@ -7,8 +7,13 @@ namespace Needle.Typescript.GeneratedComponents
 {
 	public partial class SelectableObject : UnityEngine.MonoBehaviour
 	{
-		public bool @isHovered = false;
-		public bool @isSelected = false;
+		// public undefined @onSelectionChanged; → Could not resolve C# type
+		public bool @isSelected;
+		public void start(){}
+		public void update(){}
+		public void onPointerEnter(){}
+		public void onPointerExit(){}
+		public void onPointerClick(){}
 	}
 }
 

@@ -11,6 +11,9 @@ export class UserArchive extends Behaviour {
     @serializable(AssetReference)
     public dataEntryPrefab?: AssetReference;
 
+    @serializable(AssetReference)
+    public dataAssetPrefab?: AssetReference;
+
     private dataClusters: DataCluster[] = [];
     public selectedDataCluster: DataCluster | null = null;
 
@@ -22,9 +25,9 @@ export class UserArchive extends Behaviour {
         const response = await fetch(this.jsonPath);
         const jsonData = await response.json();
         for (const clusterData of jsonData.DataClusters) {
-        const cluster = new DataCluster(clusterData, this.dataClusterPrefab, this.dataEntryPrefab);
-        await cluster.load(this.gameObject, this.context);
-        this.dataClusters.push(cluster);
+            const cluster = new DataCluster(clusterData, this.dataClusterPrefab, this.dataEntryPrefab, this.dataAssetPrefab);
+            await cluster.load(this.gameObject, this.context);
+            this.dataClusters.push(cluster);
         }
     }
 

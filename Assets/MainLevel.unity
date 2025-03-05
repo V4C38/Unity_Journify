@@ -735,7 +735,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -3910990755373119420, guid: f747010238922ae448abd02d66270030, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -2.03
+      value: -2.1
       objectReference: {fileID: 0}
     - target: {fileID: -3910990755373119420, guid: f747010238922ae448abd02d66270030, type: 3}
       propertyPath: m_LocalPosition.y
@@ -743,7 +743,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -3910990755373119420, guid: f747010238922ae448abd02d66270030, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -2.63
+      value: 1.82
       objectReference: {fileID: 0}
     - target: {fileID: -3910990755373119420, guid: f747010238922ae448abd02d66270030, type: 3}
       propertyPath: m_LocalRotation.w
@@ -790,6 +790,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 8771091787928289351, guid: f747010238922ae448abd02d66270030, type: 3}
       insertIndex: -1
       addedObject: {fileID: 790516076}
+    - targetCorrespondingSourceObject: {fileID: 8771091787928289351, guid: f747010238922ae448abd02d66270030, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 790516077}
   m_SourcePrefab: {fileID: -4161369568681901532, guid: f747010238922ae448abd02d66270030, type: 3}
 --- !u!4 &790516072 stripped
 Transform:
@@ -847,6 +850,19 @@ MonoBehaviour:
   xrKeepRotation: 0
   xrDistanceDragFactor: 1
   showGizmo: 1
+--- !u!114 &790516077
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 790516073}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 545ddb660763bbe69ad476791bc30ffe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  isSelected: 0
 --- !u!1 &969208504
 GameObject:
   m_ObjectHideFlags: 0
@@ -1403,7 +1419,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   jsonPath: UserArchive.json
   dataClusterPrefab: {fileID: 7041725509582126741, guid: 1118ed14ce9d84c8388ae7a849a1e51e, type: 3}
-  dataEntryPrefab: {fileID: 534493756166926360, guid: 0b9a128882b334f5c8820f2dcfca090c, type: 3}
+  dataEntryPrefab: {fileID: 7041725509582126741, guid: 5afe4be9ecb664dfc938841afbcbd041, type: 3}
+  dataAssetPrefab: {fileID: 7041725509582126741, guid: fd37a41996b08463bad2af39d5c4d618, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

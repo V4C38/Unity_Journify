@@ -9,14 +9,16 @@ export class DataCluster {
   public instance: GameObject | null = null;
   public selectable: SelectableObject | null = null;
   private dataEntryPrefab?: AssetReference;
+  private dataAssetPrefab?: AssetReference;
 
-  constructor(data: any, prefab?: AssetReference, dataEntryPrefab?: AssetReference) {
+  constructor(data: any, prefab?: AssetReference, dataEntryPrefab?: AssetReference, dataAssetPrefab?: AssetReference) {
     this.title = data.Title;
     this.prefab = prefab;
     this.dataEntryPrefab = dataEntryPrefab;
+    this.dataAssetPrefab = dataAssetPrefab;
     if (data.DataEntries) {
       for (const entryData of data.DataEntries) {
-        this.dataEntries.push(new DataEntry(entryData, this.dataEntryPrefab));
+        this.dataEntries.push(new DataEntry(entryData, this.dataEntryPrefab, this.dataAssetPrefab));
       }
     }
   }

@@ -8,13 +8,17 @@ export class DataEntry {
   public prefab?: AssetReference;
   public instance: GameObject | null = null;
   public selectable: SelectableObject | null = null;
+  private dataAssetPrefab?: AssetReference;
+  public location: number[] | null = null;
 
-  constructor(data: any, prefab?: AssetReference) {
+  constructor(data: any, prefab?: AssetReference, dataAssetPrefab?: AssetReference) {
     this.title = data.Title;
     this.prefab = prefab;
+    this.dataAssetPrefab = dataAssetPrefab;
+    this.location = data.Location || null;
     if (data.DataAssets) {
       for (const assetData of data.DataAssets) {
-        this.dataAssets.push(new DataAsset(assetData));
+        this.dataAssets.push(new DataAsset(assetData, this.dataAssetPrefab));
       }
     }
   }
@@ -25,6 +29,11 @@ export class DataEntry {
       options.context = context;
       this.instance = await this.prefab.instantiateSynced(options) as GameObject;
       parent.add(this.instance);
+      
+      // Set the position of the instance based on the location property
+      if (this.location && this.instance) {
+        this.instance.position.set(this.location[0], this.location[1], this.location[2]);
+      }
     } else {
       console.error("No prefab provided for DataEntry:", this.title);
       return;
