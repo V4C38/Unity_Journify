@@ -1,15 +1,27 @@
 import { AssetReference, GameObject, InstantiateOptions, syncField, EventList, Behaviour } from "@needle-tools/engine";
-import { DataAsset, PositionChangeEvent, PositionTracker } from "./DataAsset";
+import { DataAsset, PositionChangeEvent } from "./DataAsset";
 import { SelectableObject } from "./SelectableObject";
 import { IPersistable, PersistentDataInterface } from "./PersistentDataInterface";
 import { Vector3 } from "three";
 import { DragControls } from "@needle-tools/engine";
+import { PointerEventData } from "@needle-tools/engine";
 
 // Define the event type for entry selection
 export type EntrySelectedEvent = {
   entry: DataEntry;
   isSelected: boolean;
 };
+
+// Custom component to handle pointer events for DataEntry
+class EntryDragEventHandler extends Behaviour {
+  public dataEntry: DataEntry | null = null;
+  
+  onPointerUp(evt: PointerEventData): void {
+    if (this.dataEntry) {
+      this.dataEntry.onDragEnd();
+    }
+  }
+}
 
 export class DataEntry implements IPersistable {
   public uuid: string;
@@ -21,8 +33,9 @@ export class DataEntry implements IPersistable {
   private dataAssetPrefab?: AssetReference;
   public location: number[] | null = null;
   private persistentData: PersistentDataInterface | null = null;
-  private positionTracker: PositionTracker | null = null;
   private positionChanged: boolean = false;
+  private dragControls: DragControls | null = null;
+  private eventHandler: EntryDragEventHandler | null = null;
 
   // Event that fires when this entry is selected
   public readonly onSelected = new EventList<EntrySelectedEvent>();
@@ -71,20 +84,32 @@ export class DataEntry implements IPersistable {
       asset.onPositionChanged.addEventListener(this.handleAssetPositionChanged);
     }
     
-    // Set up position tracking
-    this.setupPositionTracking();
+    // Set up drag controls if we have an instance
+    if (this.instance) {
+      this.setupDragControlsEvents();
+    }
   }
   
-  // Set up position tracking
-  private setupPositionTracking(): void {
+  // Set up drag controls event handling
+  private setupDragControlsEvents(): void {
     if (!this.instance) return;
     
-    // Add position tracker component
-    this.positionTracker = this.instance.addComponent(PositionTracker);
-    this.positionTracker.dataEntry = this;
+    // Find the DragControls component on the instance
+    this.dragControls = this.instance.getComponent(DragControls);
+    
+    if (!this.dragControls) {
+      console.warn(`No DragControls found on instance for "${this.title}"`);
+      return;
+    }
+    
+    // Add event handler component if it doesn't exist
+    if (!this.eventHandler) {
+      this.eventHandler = this.instance.addComponent(EntryDragEventHandler);
+      this.eventHandler.dataEntry = this;
+    }
   }
   
-  // Called when position changes (from PositionTracker)
+  // Called when position changes
   public onPositionChanged(): void {
     if (!this.instance || !this.location) return;
     
@@ -113,11 +138,12 @@ export class DataEntry implements IPersistable {
   
   // Handle asset position changes
   private handleAssetPositionChanged = (event: PositionChangeEvent): void => {
-    // When an asset's position changes, update our own data
+    // Mark this entry as changed when any of its assets change position
+    this.positionChanged = true;
+    
+    // Update persistent data
     if (this.persistentData && this.uuid) {
       this.persistentData.updateObjectData(this.uuid);
-      // Mark this entry as changed since one of its assets changed
-      this.persistentData.markObjectChanged(this.uuid);
     }
   };
   
@@ -134,20 +160,13 @@ export class DataEntry implements IPersistable {
     
     // Get serializable data for all assets
     const dataAssets = this.dataAssets.map(asset => {
-      return {
-        UUID: asset.uuid,
-        Title: asset.title,
-        Prompt: asset.prompt,
-        transform: asset.transformData,
-        URL: asset.url
-      };
+      return asset.getSerializableData();
     });
     
     return {
       UUID: this.uuid,
       Title: this.title,
       Location: this.location,
-      IsActive: this._isActive,
       DataAssets: dataAssets
     };
   }
@@ -180,7 +199,7 @@ export class DataEntry implements IPersistable {
       }
     }
     
-    // Update isActive last and ensure visibility is updated
+    // For backward compatibility, handle IsActive if present
     if (data.IsActive !== undefined) {
       this._isActive = data.IsActive;
       this.updateAssetsVisibility();
@@ -191,7 +210,7 @@ export class DataEntry implements IPersistable {
   private updateAssetsVisibility(): void {
     for (const asset of this.dataAssets) {
       if (asset.instance) {
-        asset.instance.visible = this._isActive;
+        asset.setIsActiveWithAnimation(this._isActive);
       }
     }
   }
@@ -215,9 +234,9 @@ export class DataEntry implements IPersistable {
     this.selectable = this.instance.addComponent(SelectableObject);
     this.selectable.onSelectionChanged.addEventListener(this.handleSelectionChanged);
     
-    // Set up position tracking if we have persistent data
+    // Set up drag controls if we have a persistent data interface
     if (this.persistentData) {
-      this.setupPositionTracking();
+      this.setupDragControlsEvents();
     }
     
     for (const asset of this.dataAssets) {
@@ -248,6 +267,14 @@ export class DataEntry implements IPersistable {
     }
   };
 
+  // Called when dragging finishes
+  public onDragEnd(): void {
+    if (!this.instance) return;
+    
+    // Update position data and save
+    this.onPositionChanged();
+  }
+
   public unload(): void {
     if (this.selectable) {
       this.selectable.onSelectionChanged.removeEventListener(this.handleSelectionChanged);
@@ -270,6 +297,7 @@ export class DataEntry implements IPersistable {
     }
     this.instance?.destroy();
     this.instance = null;
-    this.positionTracker = null;
+    this.dragControls = null;
+    this.eventHandler = null;
   }
 }

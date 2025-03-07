@@ -5,10 +5,9 @@
 
 namespace Needle.Typescript.GeneratedComponents
 {
-	public partial class PositionMonitor : UnityEngine.MonoBehaviour
+	public partial class AnimationUpdater : UnityEngine.MonoBehaviour
 	{
 		public Needle.Typescript.GeneratedComponents.DataAsset @dataAsset;
-		public void start(){}
 		public void update(){}
 	}
 }

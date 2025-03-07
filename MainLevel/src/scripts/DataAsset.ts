@@ -1,8 +1,9 @@
 import { GameObject, AssetReference, InstantiateOptions, EventList, Behaviour } from "@needle-tools/engine";
 import { IPersistable, ITransformData, PersistentDataInterface } from "./PersistentDataInterface";
-import { Vector3 } from "three";
+import { Vector3, Object3D } from "three";
 import { DragControls } from "@needle-tools/engine";
 import { PointerEventData } from "@needle-tools/engine";
+import * as TWEEN from "three/examples/jsm/libs/tween.module.js";
 
 // Event for position changes
 export type PositionChangeEvent = {
@@ -10,77 +11,6 @@ export type PositionChangeEvent = {
   newPosition: Vector3;
   oldPosition: Vector3;
 };
-
-// Custom component to track position changes
-export class PositionTracker extends Behaviour {
-  public dataAsset: DataAsset | null = null;
-  public dataEntry: any = null; // Can be DataEntry or null
-  private lastPosition: Vector3 = new Vector3();
-  private lastRotationX: number = 0;
-  private lastRotationY: number = 0;
-  private lastRotationZ: number = 0;
-  private lastScale: Vector3 = new Vector3();
-  private checkInterval: number = 1.0; // Check every 1 second (increased from 0.5)
-  private timeSinceLastCheck: number = 0;
-  private positionChangeThreshold: number = 0.05; // Minimum position change to trigger an update (5cm)
-  private rotationChangeThreshold: number = 0.1; // Minimum rotation change to trigger an update (in radians, ~5.7 degrees)
-  private scaleChangeThreshold: number = 0.1; // Minimum scale change to trigger an update (10%)
-  
-  start(): void {
-    if (this.gameObject) {
-      this.lastPosition.copy(this.gameObject.position);
-      this.lastRotationX = this.gameObject.rotation.x;
-      this.lastRotationY = this.gameObject.rotation.y;
-      this.lastRotationZ = this.gameObject.rotation.z;
-      this.lastScale.copy(this.gameObject.scale);
-    }
-  }
-  
-  update(): void {
-    if (!this.gameObject) return;
-    
-    this.timeSinceLastCheck += this.context.time.deltaTime;
-    
-    // Only check periodically to avoid excessive updates
-    if (this.timeSinceLastCheck >= this.checkInterval) {
-      this.timeSinceLastCheck = 0;
-      
-      // Check if position has changed beyond the threshold (5cm)
-      const positionChanged = 
-        Math.abs(this.gameObject.position.x - this.lastPosition.x) > this.positionChangeThreshold ||
-        Math.abs(this.gameObject.position.y - this.lastPosition.y) > this.positionChangeThreshold ||
-        Math.abs(this.gameObject.position.z - this.lastPosition.z) > this.positionChangeThreshold;
-      
-      // Check if rotation has changed beyond the threshold (~5.7 degrees)
-      const rotationChanged = 
-        Math.abs(this.gameObject.rotation.x - this.lastRotationX) > this.rotationChangeThreshold ||
-        Math.abs(this.gameObject.rotation.y - this.lastRotationY) > this.rotationChangeThreshold ||
-        Math.abs(this.gameObject.rotation.z - this.lastRotationZ) > this.rotationChangeThreshold;
-      
-      // Check if scale has changed beyond the threshold (10%)
-      const scaleChanged = 
-        Math.abs(this.gameObject.scale.x - this.lastScale.x) > this.scaleChangeThreshold ||
-        Math.abs(this.gameObject.scale.y - this.lastScale.y) > this.scaleChangeThreshold ||
-        Math.abs(this.gameObject.scale.z - this.lastScale.z) > this.scaleChangeThreshold;
-      
-      if (positionChanged || rotationChanged || scaleChanged) {
-        // Call the appropriate handler
-        if (this.dataAsset) {
-          this.dataAsset.onTransformChanged();
-        } else if (this.dataEntry) {
-          this.dataEntry.onPositionChanged();
-        }
-        
-        // Update last values
-        this.lastPosition.copy(this.gameObject.position);
-        this.lastRotationX = this.gameObject.rotation.x;
-        this.lastRotationY = this.gameObject.rotation.y;
-        this.lastRotationZ = this.gameObject.rotation.z;
-        this.lastScale.copy(this.gameObject.scale);
-      }
-    }
-  }
-}
 
 // Custom component to handle pointer events
 class DragEventHandler extends Behaviour {
@@ -105,8 +35,32 @@ export class DataAsset implements IPersistable {
   private persistentData: PersistentDataInterface | null = null;
   private dragControls: DragControls | null = null;
   private eventHandler: DragEventHandler | null = null;
-  private positionTracker: PositionTracker | null = null;
   private transformChanged: boolean = false;
+  private handleDragEnd: ((dragControls: DragControls, object: Object3D, eventData: PointerEventData | null) => void) | null = null;
+  private visibilityTween: TWEEN.Tween<any> | null = null;
+  private targetScale: Vector3 = new Vector3(1, 1, 1);
+  
+  private _isActive: boolean = true;
+
+  public get isActive(): boolean {
+    return this._isActive;
+  }
+
+  public set isActive(value: boolean) {
+    if (this._isActive !== value) {
+      this._isActive = value;
+      
+      // Update instance visibility if it exists
+      if (this.instance) {
+        this.instance.visible = value;
+      }
+      
+      // Update persistent data if active state changes
+      if (this.persistentData && this.uuid) {
+        this.persistentData.updateObjectData(this.uuid);
+      }
+    }
+  }
   
   // Event that fires when position changes
   public readonly onPositionChanged = new EventList<PositionChangeEvent>();
@@ -125,22 +79,10 @@ export class DataAsset implements IPersistable {
     this.persistentData = persistentData;
     persistentData.registerObject(this);
     
-    // Set up position tracking and drag controls if we have an instance
+    // Set up drag controls if we have an instance
     if (this.instance) {
-      this.setupPositionTracking();
       this.setupDragControlsEvents();
     }
-  }
-  
-  // Set up position tracking
-  private setupPositionTracking(): void {
-    if (!this.instance) return;
-    
-    // Add position tracker component
-    this.positionTracker = this.instance.addComponent(PositionTracker);
-    this.positionTracker.dataAsset = this;
-    
-    console.log(`DataAsset: Set up position tracking for "${this.title}"`);
   }
   
   // Set up drag controls event handling
@@ -155,12 +97,14 @@ export class DataAsset implements IPersistable {
       return;
     }
     
-    // Add event handler component
-    this.eventHandler = this.instance.addComponent(DragEventHandler);
-    this.eventHandler.dataAsset = this;
+    // Add event handler component if it doesn't exist
+    if (!this.eventHandler) {
+      this.eventHandler = this.instance.addComponent(DragEventHandler);
+      this.eventHandler.dataAsset = this;
+    }
   }
   
-  // Called when transform changes (from PositionTracker)
+  // Called when transform changes
   public onTransformChanged(): void {
     if (!this.instance) return;
     
@@ -204,11 +148,20 @@ export class DataAsset implements IPersistable {
       this.updateTransformDataFromInstance();
     }
     
+    // Create a copy of transform data without scale for serialization
+    const transformDataForSerialization = {
+      position: this.transformData.position,
+      rotation: this.transformData.rotation
+      // Intentionally omitting scale as requested
+    };
+    
     return {
+      UUID: this.uuid,
       Title: this.title,
       Prompt: this.prompt,
-      transform: this.transformData,
-      URL: this.url
+      transform: transformDataForSerialization,
+      URL: this.url,
+      IsActive: this._isActive
     };
   }
   
@@ -219,9 +172,28 @@ export class DataAsset implements IPersistable {
     if (data.transform) this.transformData = data.transform;
     if (data.URL) this.url = data.URL;
     
+    // For backward compatibility, handle IsActive if present
+    if (data.IsActive !== undefined) {
+      this._isActive = data.IsActive;
+      
+      // Update instance visibility if it exists
+      if (this.instance) {
+        this.instance.visible = this._isActive;
+      }
+    }
+    
     // Update the instance if it exists
     if (this.instance && data.transform) {
       this.updateInstanceFromTransformData();
+      
+      // Store the target scale from the transform data
+      if (data.transform.scale) {
+        this.targetScale = new Vector3(
+          data.transform.scale[0],
+          data.transform.scale[1],
+          data.transform.scale[2]
+        );
+      }
     }
   }
   
@@ -241,6 +213,7 @@ export class DataAsset implements IPersistable {
         this.instance.rotation.y * (180 / Math.PI),
         this.instance.rotation.z * (180 / Math.PI)
       ],
+      // Still track scale internally but don't save it to JSON
       scale: [
         this.instance.scale.x,
         this.instance.scale.y,
@@ -297,6 +270,15 @@ export class DataAsset implements IPersistable {
     // Apply transform data (position, rotation, scale)
     if (this.transformData) {
       this.updateInstanceFromTransformData();
+      
+      // Store the target scale from the transform data
+      if (this.transformData.scale) {
+        this.targetScale = new Vector3(
+          this.transformData.scale[0],
+          this.transformData.scale[1],
+          this.transformData.scale[2]
+        );
+      }
     } else {
       // If no transform data, set to default position (near parent's position)
       const parentPosition = parent.position.clone();
@@ -324,9 +306,8 @@ export class DataAsset implements IPersistable {
       }
     }
     
-    // Set up position tracking and drag controls if we have a persistent data interface
+    // Set up drag controls if we have a persistent data interface
     if (this.persistentData) {
-      this.setupPositionTracking();
       this.setupDragControlsEvents();
     }
   }
@@ -345,6 +326,92 @@ export class DataAsset implements IPersistable {
     this.modelInstance = null;
     this.dragControls = null;
     this.eventHandler = null;
-    this.positionTracker = null;
+  }
+
+  /**
+   * Sets the active state of the asset with animation
+   * @param active Whether the asset should be active
+   * @param duration Animation duration in seconds
+   */
+  public setIsActiveWithAnimation(active: boolean, duration: number = 0.5): void {
+    if (!this.instance) return;
+    
+    // Update the isActive property
+    this._isActive = active;
+    
+    // Cancel any existing animation
+    if (this.visibilityTween) {
+      this.visibilityTween.stop();
+      this.visibilityTween = null;
+    }
+    
+    // If we're showing the asset
+    if (active) {
+      // Make it visible immediately
+      this.instance.visible = true;
+      
+      // Create a scale-up animation
+      const currentScale = this.instance.scale.clone();
+      const targetScaleObj = { 
+        x: this.targetScale.x, 
+        y: this.targetScale.y, 
+        z: this.targetScale.z 
+      };
+      
+      this.visibilityTween = new TWEEN.Tween({ 
+        x: currentScale.x, 
+        y: currentScale.y, 
+        z: currentScale.z 
+      })
+        .to(targetScaleObj, duration * 1000)
+        .easing(TWEEN.Easing.Elastic.Out)
+        .onUpdate((obj) => {
+          if (this.instance) {
+            this.instance.scale.set(obj.x, obj.y, obj.z);
+          }
+        })
+        .start();
+    } 
+    // If we're hiding the asset
+    else {
+      // Create a scale-down animation
+      const currentScale = this.instance.scale.clone();
+      
+      this.visibilityTween = new TWEEN.Tween({ 
+        x: currentScale.x, 
+        y: currentScale.y, 
+        z: currentScale.z 
+      })
+        .to({ x: 0, y: 0, z: 0 }, duration * 1000)
+        .easing(TWEEN.Easing.Back.In)
+        .onUpdate((obj) => {
+          if (this.instance) {
+            this.instance.scale.set(obj.x, obj.y, obj.z);
+          }
+        })
+        .onComplete(() => {
+          // Hide the asset after the animation completes
+          if (this.instance) {
+            this.instance.visible = false;
+          }
+        })
+        .start();
+    }
+    
+    // Make sure TWEEN updates are called
+    const updateTween = () => {
+      TWEEN.update();
+      if (this.visibilityTween) {
+        requestAnimationFrame(updateTween);
+      }
+    };
+    requestAnimationFrame(updateTween);
+  }
+  
+  /**
+   * @deprecated Use setIsActiveWithAnimation instead
+   */
+  public setVisibilityWithAnimation(visible: boolean, duration: number = 0.5): void {
+    this.setIsActiveWithAnimation(visible, duration);
   }
 }
