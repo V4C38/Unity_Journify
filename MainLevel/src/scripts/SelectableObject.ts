@@ -32,8 +32,26 @@ export class SelectableObject extends Behaviour {
     @serializable()
     private _isSelected: boolean = false;
     
+    @serializable()
+    public isToggleable: boolean = true;
+    
+    @serializable()
+    public triggerResetDelayMs: number = 300;
+    
+    @serializable()
+    public debugLogging: boolean = true;
+    
+    private triggerResetTimeout: number | null = null;
+    
     // Event that fires when selection state changes
     public readonly onSelectionChanged = new EventList<SelectionChangeEvent>();
+    
+    // Helper method for debug logging
+    private logDebug(message: string): void {
+        if (this.debugLogging) {
+            console.log(`SelectableObject (${this.gameObject?.name}): ${message}`);
+        }
+    }
     
     // Getter and setter for isSelected to emit events when changed
     public get isSelected(): boolean {
@@ -43,6 +61,8 @@ export class SelectableObject extends Behaviour {
     public set isSelected(value: boolean) {
         if (this._isSelected !== value) {
             this._isSelected = value;
+            this.updateTargetScale();
+            
             // Emit selection change event
             this.onSelectionChanged.invoke({
                 object: this,
@@ -53,12 +73,18 @@ export class SelectableObject extends Behaviour {
     
     // Cache the original scale when the component starts
     start() {
-        // Cache the original scale of the object
-        if (this.gameObject && this.gameObject.scale) {
-            // Create a new Vector3 to ensure we have a clean copy
-            this.originalScale = new Vector3().copy(this.gameObject.scale);
-            this.targetScale = new Vector3().copy(this.originalScale);
+        if (this.gameObject) {
+            // Store the original scale
+            this.originalScale.copy(this.gameObject.scale);
+            this.targetScale.copy(this.originalScale);
+        } else {
+            console.error("SelectableObject: No gameObject found");
         }
+    }
+    
+    // Clean up any timeouts when the component is destroyed
+    onDestroy() {
+        this.clearTriggerResetTimeout();
     }
     
     // Update is called once per frame
@@ -76,9 +102,26 @@ export class SelectableObject extends Behaviour {
         this.setHovered(false);
     }
     
-    // Handle click to toggle selection
+    // Handle click to toggle selection or trigger event
     onPointerClick() {
-        this.isSelected = !this.isSelected;
+        this.logDebug("Pointer clicked");
+        
+        if (this.isToggleable) {
+            // Toggle mode - toggle between selected and not selected
+            this.isSelected = !this.isSelected;
+        } else {
+            // Trigger mode - always fire event with isSelected=true, then reset to false
+            // First, ensure we're not already in the selected state
+            if (this._isSelected) {
+                return;
+            }
+            
+            // Set to selected state
+            this.isSelected = true;
+            
+            // Schedule reset after delay
+            this.scheduleTriggerReset();
+        }
     }
     
     // Set the hover state and update the target scale
@@ -172,5 +215,46 @@ export class SelectableObject extends Behaviour {
         target.x = originalX;
         target.y = originalY;
         target.z = originalZ;
+    }
+    
+    // Schedule a reset of the trigger state after a delay
+    private scheduleTriggerReset(): void {
+        // Clear any existing timeout
+        this.clearTriggerResetTimeout();
+        
+        // Set a new timeout
+        this.triggerResetTimeout = window.setTimeout(() => {
+            this.isSelected = false;
+        }, this.triggerResetDelayMs);
+    }
+    
+    // Clear the trigger reset timeout
+    private clearTriggerResetTimeout(): void {
+        if (this.triggerResetTimeout !== null) {
+            window.clearTimeout(this.triggerResetTimeout);
+            this.triggerResetTimeout = null;
+        }
+    }
+    
+    // Method to manually trigger a click event (can be called from Unity Inspector)
+    public triggerClick(): void {
+        console.log(`SelectableObject (${this.gameObject?.name}): Manual click triggered`);
+        this.onPointerClick();
+    }
+    
+    // Method to directly add a listener (can be called from Unity Inspector)
+    public addDirectListener(callback: (event: SelectionChangeEvent) => void): void {
+        console.log(`SelectableObject (${this.gameObject?.name}): Adding direct listener`);
+        this.onSelectionChanged.addEventListener(callback);
+        console.log(`SelectableObject (${this.gameObject?.name}): Listener count now ${this.onSelectionChanged.listenerCount}`);
+    }
+    
+    // Method to test if events are working
+    public testEvent(): void {
+        console.log(`SelectableObject (${this.gameObject?.name}): Testing event with ${this.onSelectionChanged.listenerCount} listeners`);
+        this.onSelectionChanged.invoke({
+            object: this,
+            isSelected: true
+        });
     }
 }

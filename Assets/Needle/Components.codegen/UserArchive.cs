@@ -15,6 +15,8 @@ namespace Needle.Typescript.GeneratedComponents
 		public bool @debugLogging = true;
 		public bool @enableAutoSave = false;
 		public Needle.Typescript.GeneratedComponents.DataCluster @selectedDataCluster;
+		public void getFirstDataCluster(){}
+		public void hasDataClusters(){}
 		public void start(){}
 		public void onDestroy(){}
 		public void loadArchive(){}

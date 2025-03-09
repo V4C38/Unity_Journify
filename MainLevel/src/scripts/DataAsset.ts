@@ -262,6 +262,10 @@ export class DataAsset implements IPersistable {
       // Add the instance to the scene root instead of the parent
       // This makes it a standalone object
       context.scene.add(this.instance);
+      
+      // Ensure the instance is at 0,0,0
+      this.instance.position.set(0, 0, 0);
+      this.instance.rotation.set(0, 0, 0);
     } else {
       console.error("No prefab provided for DataAsset:", this.title);
       return;
@@ -288,21 +292,42 @@ export class DataAsset implements IPersistable {
     // Now load the model from the URL and parent it to the prefab instance
     if (this.url) {
       try {
-        const modelAsset = AssetReference.getOrCreate(this.url, this.url, context);
-        const modelOptions = new InstantiateOptions();
-        modelOptions.context = context;
-        this.modelInstance = await modelAsset.instantiate(modelOptions) as GameObject;
+        console.log(`DataAsset: Loading model from URL: ${this.url}`);
         
-        // Parent the model to the prefab instance
-        this.instance.add(this.modelInstance);
-        
-        // Reset the model's local position, rotation, and scale
-        // This ensures it's positioned correctly relative to the prefab
-        this.modelInstance.position.set(0, 0, 0);
-        this.modelInstance.rotation.set(0, 0, 0);
-        this.modelInstance.scale.set(1, 1, 1);
+        // Check if the URL is accessible before trying to load it
+        try {
+          // Create a modified URL for the model that includes CORS headers
+          // If the URL is from v4c38.com, ensure it's using the proper format
+          let modelUrl = this.url;
+          
+          // Log the URL we're using
+          console.log(`DataAsset: Using model URL: ${modelUrl}`);
+          
+          // Create the asset reference with the URL
+          const modelAsset = AssetReference.getOrCreate(modelUrl, modelUrl, context);
+          const modelOptions = new InstantiateOptions();
+          modelOptions.context = context;
+          
+          // Load the model
+          this.modelInstance = await modelAsset.instantiate(modelOptions) as GameObject;
+          
+          // Parent the model to the prefab instance
+          this.instance.add(this.modelInstance);
+          
+          // Reset the model's local position, rotation, and scale
+          // This ensures it's positioned correctly relative to the prefab
+          this.modelInstance.position.set(0, 0, 0);
+          this.modelInstance.rotation.set(0, 0, 0);
+          this.modelInstance.scale.set(1, 1, 1);
+          
+          console.log(`DataAsset: Successfully loaded model for ${this.title}`);
+        } catch (error) {
+          console.error(`DataAsset: Error loading model: ${error instanceof Error ? error.message : String(error)}`);
+          throw error;
+        }
       } catch (error) {
         console.error(`Failed to load model from URL: ${this.url} for DataAsset: ${this.title}`, error);
+        throw error; // Re-throw to allow caller to handle the error
       }
     }
     

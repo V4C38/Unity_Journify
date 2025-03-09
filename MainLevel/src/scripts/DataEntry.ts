@@ -36,6 +36,7 @@ export class DataEntry implements IPersistable {
   private positionChanged: boolean = false;
   private dragControls: DragControls | null = null;
   private eventHandler: EntryDragEventHandler | null = null;
+  private context: any = null;
 
   // Event that fires when this entry is selected
   public readonly onSelected = new EventList<EntrySelectedEvent>();
@@ -216,6 +217,9 @@ export class DataEntry implements IPersistable {
   }
 
   public async load(parent: GameObject, context: any): Promise<void> {
+    // Store the context for later use
+    this.context = context;
+    
     if (this.prefab) {
       const options = new InstantiateOptions();
       options.context = context;
@@ -251,6 +255,33 @@ export class DataEntry implements IPersistable {
     
     // Set visibility for all assets after they're loaded
     this.updateAssetsVisibility();
+  }
+
+  public addNewDataAsset(dataAsset: DataAsset): void {
+    // Add the asset to the dataAssets array
+    this.dataAssets.push(dataAsset);
+    
+    // If the entry has an instance and is loaded, load the asset
+    if (this.instance) {
+      // Load the asset
+      dataAsset.load(this.instance, this.context).then(() => {
+        console.log(`DataEntry: Asset "${dataAsset.title}" loaded successfully`);
+        
+        // Register with persistent data if available
+        if (this.persistentData) {
+          dataAsset.registerWithPersistentData(this.persistentData);
+          
+          // Add event listener for position changes
+          dataAsset.onPositionChanged.addEventListener(this.handleAssetPositionChanged);
+          
+          // Update this entry's data in persistent storage
+          this.persistentData.updateObjectData(this.uuid);
+        }
+        
+        // Set the asset's visibility based on the entry's active state
+        dataAsset.setIsActiveWithAnimation(this._isActive);
+      });
+    }
   }
 
   private handleSelectionChanged = (event: { object: SelectableObject; isSelected: boolean }) => {

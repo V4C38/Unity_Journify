@@ -29,6 +29,16 @@ export class UserArchive extends Behaviour {
     private persistentData: PersistentDataInterface | null = null;
     private saveInterval: number | null = null;
 
+    // Get the first available data cluster
+    public getFirstDataCluster(): DataCluster | null {
+        return this.dataClusters.length > 0 ? this.dataClusters[0] : null;
+    }
+
+    // Check if there are any data clusters
+    public hasDataClusters(): boolean {
+        return this.dataClusters.length > 0;
+    }
+
     start() {
         if (this.debugLogging) {
             console.log("UserArchive: Starting...");
