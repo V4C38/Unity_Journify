@@ -205,6 +205,37 @@ export class UserArchive extends Behaviour {
         // Remove the entry from the cluster
         await this.selectedDataCluster.removeDataEntry(selectedEntry);
     }
+
+    public async addDebugAsset() {
+        if (!this.selectedDataCluster) {
+            console.warn("[UserArchive] No cluster selected, cannot add debug asset");
+            return;
+        }
+
+        const selectedEntry = this.selectedDataCluster.selectedDataEntry;
+        if (!selectedEntry) {
+            console.warn("[UserArchive] No entry selected to add debug asset to");
+            return;
+        }
+
+        const debugAssetUrl = "https://www.v4c38.com/api/download?file=gen_A_big_nice_tree_in_a_8e3990ba-fc43-40b2-844c-245c0faf824b.glb";
+        
+        // Create a new asset
+        const asset = await selectedEntry.createDataAsset();
+        asset.uuid = crypto.randomUUID();
+        asset.modelURL = debugAssetUrl;
+        
+        // Set up transform data
+        const transform = {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+        };
+        
+        // Load the asset and add it to the entry
+        await asset.load(this.context, transform, debugAssetUrl);
+        await selectedEntry.addDataAsset(asset);
+    }
     
     // --------------------------------------------------------------------------
 

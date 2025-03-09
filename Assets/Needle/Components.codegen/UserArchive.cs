@@ -20,6 +20,7 @@ namespace Needle.Typescript.GeneratedComponents
 		public void hasClusters(){}
 		public void addNewEntry(){}
 		public void removeSelectedEntry(){}
+		public void addDebugAsset(){}
 		public void unloadArchive(){}
 		public void saveArchive(){}
 	}
