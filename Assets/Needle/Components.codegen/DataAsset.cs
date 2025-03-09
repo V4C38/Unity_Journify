@@ -7,15 +7,12 @@ namespace Needle.Typescript.GeneratedComponents
 {
 	public partial class DataAsset : UnityEngine.MonoBehaviour
 	{
-		public string @title;
-		public string @prompt;
-		public object @transformData;
-		public string @url;
-		public UnityEngine.GameObject @instance;
-		public UnityEngine.Transform @prefab;
-		public void load(UnityEngine.GameObject @parent, object @context){}
-		public void update(){}
-		public void setVisible(bool @visible){}
+		public string @uuid = "";
+		public string @prompt = "";
+		public UnityEngine.GameObject @gameObject;
+		public string @modelURL = "";
+		public object @isActive;
+		public void load(object @context, object @transform, string @modelURL){}
 		public void unload(){}
 	}
 }

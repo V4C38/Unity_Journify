@@ -5,11 +5,10 @@
 
 namespace Needle.Typescript.GeneratedComponents
 {
-	public partial class PositionMonitor : UnityEngine.MonoBehaviour
+	public partial class UserManager : UnityEngine.MonoBehaviour
 	{
-		public Needle.Typescript.GeneratedComponents.DataAsset @dataAsset;
 		public void start(){}
-		public void update(){}
+		public void getCurrentUsername(){}
 	}
 }
 

@@ -2,70 +2,68 @@ import { Behaviour, serializable, EventList } from "@needle-tools/engine";
 import { Vector3 } from "three";
 
 // Event type for selection change events
-export type SelectionChangeEvent = {
-    object: SelectableObject;
+export type TriggeredEvent = {
+    object: TriggerInteraction;
+};
+
+// Event type for selection change events
+export type SelectionStateChangedEvent = {
+    object: TriggerInteraction;
     isSelected: boolean;
 };
 
-export class SelectableObject extends Behaviour {
-    // Original scale of the object
-    private originalScale: Vector3 = new Vector3(1, 1, 1);
-    
-    // Current target scale
-    private targetScale: Vector3 = new Vector3(1, 1, 1);
-    
-    // Current scale velocity for smooth damping
-    private scaleVelocity: Vector3 = new Vector3(0, 0, 0);
-    
-    // Hover scale factor (102%)
+export class TriggerInteraction extends Behaviour {
+    // If true, the object has no state / ie is not toggleable
     @serializable()
-    private hoverScaleFactor: number = 1.02;
+    public isTriggerOnly: boolean = false;
     
-    // Animation duration in seconds
-    @serializable()
-    private animationDuration: number = 0.2;
-    
-    // Whether the object is currently hovered
-    private isHovered: boolean = false;
-    
-    // Whether the object is currently selected
-    @serializable()
+    // Event that fires when isTriggerOnly true and the object is clicked
+    public readonly onTriggered = new EventList<TriggeredEvent>();
+
+    // The current state of the selection if is not just a trigger
     private _isSelected: boolean = false;
     
-    // Event that fires when selection state changes
-    public readonly onSelectionChanged = new EventList<SelectionChangeEvent>();
-    
+    // Event that fires when _isSelected changes
+    public readonly onSelectionStateChanged = new EventList<SelectionStateChangedEvent>();
+
+    private _isHovered: boolean = false;
+
+    private originalScale: Vector3 = new Vector3(1, 1, 1);
+    private targetScale: Vector3 = new Vector3(1, 1, 1);
+    private scaleVelocity: Vector3 = new Vector3(0, 0, 0);
+
+    @serializable()
+    public hoverScaleFactor: number = 1.015;
+
+    @serializable()
+    public animationDuration: number = 0.2;
+
+    // Cache the original scale when the component starts
+    start() {
+        if (this.gameObject) {
+            // Store the original scale
+            this.originalScale.copy(this.gameObject.scale);
+            this.targetScale.copy(this.originalScale);
+        } else {
+            console.error("TriggerInteraction: No gameObject found");
+        }
+    }
+
     // Getter and setter for isSelected to emit events when changed
     public get isSelected(): boolean {
         return this._isSelected;
     }
-    
+
     public set isSelected(value: boolean) {
         if (this._isSelected !== value) {
             this._isSelected = value;
-            // Emit selection change event
-            this.onSelectionChanged.invoke({
+            this.onSelectionStateChanged.invoke({
                 object: this,
                 isSelected: value
             });
         }
     }
-    
-    // Cache the original scale when the component starts
-    start() {
-        // Cache the original scale of the object
-        if (this.gameObject && this.gameObject.scale) {
-            // Create a new Vector3 to ensure we have a clean copy
-            this.originalScale = new Vector3().copy(this.gameObject.scale);
-            this.targetScale = new Vector3().copy(this.originalScale);
-        }
-    }
-    
-    // Update is called once per frame
-    update() {
-        this.animateScale();
-    }
-    
+
     // Set hover state to true
     onPointerEnter() {
         this.setHovered(true);
@@ -76,51 +74,51 @@ export class SelectableObject extends Behaviour {
         this.setHovered(false);
     }
     
-    // Handle click to toggle selection
+    // Handle click to toggle selection or trigger event
     onPointerClick() {
-        this.isSelected = !this.isSelected;
+        if (this.isTriggerOnly) {
+            this.onTriggered.invoke({
+                object: this
+            });
+        } else {
+            this.isSelected = !this.isSelected;
+        }
     }
-    
+
     // Set the hover state and update the target scale
     private setHovered(hovered: boolean) {
-        if (this.isHovered === hovered) return;
-        
-        this.isHovered = hovered;
-        this.updateTargetScale();
-    }
-    
-    // Update the target scale based on hover state
-    private updateTargetScale() {
-        if (!this.gameObject) return;
-        
-        if (this.isHovered) {
-            // Set target scale to 102% of original scale when hovered
+        if (this._isHovered === hovered) return;
+        this._isHovered = hovered;
+
+        if (hovered) {
             this.targetScale.set(
                 this.originalScale.x * this.hoverScaleFactor,
                 this.originalScale.y * this.hoverScaleFactor,
                 this.originalScale.z * this.hoverScaleFactor
             );
         } else {
-            // Set target scale back to original scale when not hovered
             this.targetScale.copy(this.originalScale);
         }
     }
-    
-    // Animate the scale smoothly towards the target scale
+
+    update() {
+        this.animateScale();
+    }
+
     private animateScale() {
         if (!this.gameObject) return;
         
-        const smoothTime = this.animationDuration * 0.5; // Adjust for desired feel
+        const smoothTime = this.animationDuration * 0.5;
         
         // Smoothly interpolate current scale to target scale
         this.smoothDamp(
-            this.gameObject.scale, 
-            this.targetScale, 
-            this.scaleVelocity, 
+            this.gameObject.scale,
+            this.targetScale,
+            this.scaleVelocity,
             smoothTime
         );
     }
-    
+
     // Implementation of SmoothDamp for Vector3 (similar to Unity's Vector3.SmoothDamp)
     private smoothDamp(current: Vector3, target: Vector3, velocity: Vector3, smoothTime: number): void {
         const deltaTime = this.context.time.deltaTime;

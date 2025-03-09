@@ -1,137 +1,182 @@
 import { AssetReference, GameObject, InstantiateOptions, Behaviour } from "@needle-tools/engine";
-import { DataEntry, EntrySelectedEvent } from "./DataEntry";
-import { SelectableObject } from "./SelectableObject";
-import { IPersistable, PersistentDataInterface } from "./PersistentDataInterface";
+import { DataEntry } from "./DataEntry";
+import { TriggerInteraction } from "./TriggerInteraction";
+import { Material } from "three";
 
-export class DataCluster extends Behaviour implements IPersistable {
-  public uuid: string;
-  public title: string;
+export class DataCluster extends Behaviour {
   public dataEntries: DataEntry[] = [];
-  public prefab?: AssetReference;
-  public instance: GameObject | null = null;
-  public selectable: SelectableObject | null = null;
-  private dataEntryPrefab?: AssetReference;
-  private dataAssetPrefab?: AssetReference;
-  private persistentData: PersistentDataInterface | null = null;
+  public selectedDataEntry: DataEntry | null = null;
+  declare public gameObject: GameObject;  // Using declare to avoid overwriting base property
+  private prefab: AssetReference;
+  private dataEntryPrefab: AssetReference;
+  private dataAssetPrefab: AssetReference;
+  
+  private uuid: string = "";
+  private title: string = "";
+  private _isActive: boolean = true; // Active by default, right now there will only be one cluster
+  private entryIds: Map<DataEntry, string> = new Map();
+  private activeMaterial?: Material;
+  private inactiveMaterial?: Material;
 
-  constructor(data: any, prefab?: AssetReference, dataEntryPrefab?: AssetReference, dataAssetPrefab?: AssetReference) {
+  constructor(prefab: AssetReference, dataEntryPrefab: AssetReference, dataAssetPrefab: AssetReference) {
     super();
-    this.uuid = data.UUID || "";
-    this.title = data.Title;
+    if (!prefab || !dataEntryPrefab || !dataAssetPrefab) {
+      throw new Error("[DataCluster] All prefabs (cluster, entry, asset) are required in constructor");
+    }
     this.prefab = prefab;
     this.dataEntryPrefab = dataEntryPrefab;
     this.dataAssetPrefab = dataAssetPrefab;
-    if (data.DataEntries) {
-      for (const entryData of data.DataEntries) {
-        this.dataEntries.push(new DataEntry(entryData, this.dataEntryPrefab, this.dataAssetPrefab));
-      }
-    }
   }
-  
-  // Register with the persistent data interface
-  public registerWithPersistentData(persistentData: PersistentDataInterface): void {
-    this.persistentData = persistentData;
-    persistentData.registerObject(this);
-    
-    // Register all data entries
+
+  public get isActive(): boolean {
+    return this._isActive;
+  }
+
+  public get id(): string {
+    return this.uuid;
+  }
+
+  public get name(): string {
+    return this.title;
+  }
+
+  public set isActive(value: { newState: boolean; animate: boolean }) {
+    console.log(`[DataCluster] ${this.title} - Setting active state to ${value.newState}`);
+    this._isActive = value.newState;
     for (const entry of this.dataEntries) {
-      entry.registerWithPersistentData(persistentData);
-    }
-  }
-  
-  // Implement IPersistable interface
-  public getSerializableData(): any {
-    // Get serializable data for all entries
-    const dataEntries = this.dataEntries.map(entry => {
-      return entry.getSerializableData();
-    });
-    
-    return {
-      UUID: this.uuid,
-      Title: this.title,
-      DataEntries: dataEntries
-    };
-  }
-  
-  // Update from data
-  public updateFromData(data: any): void {
-    if (data.Title) this.title = data.Title;
-    
-    // Update data entries if provided
-    if (data.DataEntries) {
-      // Match entries by UUID
-      for (const entryData of data.DataEntries) {
-        const entry = this.dataEntries.find(e => e.uuid === entryData.UUID);
-        if (entry) {
-          entry.updateFromData(entryData);
-        }
-      }
+      entry.isActive = { newState: value.newState, animate: value.animate };
     }
   }
 
-  public async load(parent: GameObject, context: any): Promise<void> {
-    console.log(`DataCluster: Loading cluster "${this.title}" with UUID ${this.uuid}`);
-    console.log(`DataCluster: Number of data entries: ${this.dataEntries.length}`);
-    
-    if (this.prefab) {
-      const options = new InstantiateOptions();
-      options.context = context;
-      this.instance = await this.prefab.instantiateSynced(options) as GameObject;
-      parent.add(this.instance);
-      console.log(`DataCluster: Successfully instantiated prefab for "${this.title}"`);
-    } else {
-      console.error("No prefab provided for DataCluster:", this.title);
+  public async load(uuid: string, title: string, dataEntries: DataEntry[]): Promise<void> {
+    if (!this.prefab) {
+      console.error("[DataCluster] No prefab set for DataCluster");
       return;
     }
 
-    this.selectable = this.instance.addComponent(SelectableObject);
-    
-    // Set up event listeners for entry selection
-    for (const entry of this.dataEntries) {
-      console.log(`DataCluster: Loading entry "${entry.title}" with UUID ${entry.uuid}`);
-      await entry.load(this.instance, context);
-      entry.onSelected.addEventListener(this.handleEntrySelected);
-      
-      // Register with persistent data if available
-      if (this.persistentData) {
-        entry.registerWithPersistentData(this.persistentData);
-      }
-    }
-    
-    console.log(`DataCluster: Finished loading cluster "${this.title}"`);
-  }
-  
-  // Handle entry selection
-  private handleEntrySelected = (event: EntrySelectedEvent): void => {
-    // When an entry is selected, update our data
-    if (this.persistentData && this.uuid) {
-      this.persistentData.updateObjectData(this.uuid);
-    }
-    
-    // Manage which entries are active
-    if (event.isSelected) {
-      // When an entry is selected, deactivate all other entries
-      for (const entry of this.dataEntries) {
-        if (entry !== event.entry && entry.isActive) {
-          entry.isActive = false;
-        }
-      }
-    }
-  };
+    this.uuid = uuid;
+    this.title = title;
+    console.log(`[DataCluster] Loading cluster "${title}" (${uuid})`);
 
-  public unload(): void {
-    // Unregister from persistent data
-    if (this.persistentData && this.uuid) {
-      this.persistentData.unregisterObject(this.uuid);
-      this.persistentData = null;
+    // Instantiate the prefab
+    const options = new InstantiateOptions();
+    options.context = this.context;
+    this.gameObject = await this.prefab.instantiateSynced(options) as GameObject;
+
+    // Load all data entries
+    for (const entry of dataEntries) {
+      await this.addDataEntry(entry);
     }
-    
+    console.log(`[DataCluster] Cluster "${title}" loaded with ${dataEntries.length} entries`);
+  }
+
+  public async unload(): Promise<void> {
+    console.log(`[DataCluster] Unloading cluster "${this.title}"`);
+    // Unload all data entries
     for (const entry of this.dataEntries) {
-      entry.onSelected.removeEventListener(this.handleEntrySelected);
-      entry.unload();
+      await entry.unload();
     }
-    this.instance?.destroy();
-    this.instance = null;
+    this.dataEntries = [];
+    this.selectedDataEntry = null;
+    this.entryIds.clear();
+
+    // Destroy the game object
+    if (this.gameObject) {
+      this.gameObject.destroy();
+    }
+    console.log(`[DataCluster] Cluster "${this.title}" unloaded`);
+  }
+
+  public async addDataEntry(dataEntry: DataEntry, transform?: any): Promise<void> {
+    this.dataEntries.push(dataEntry);
+    if (this.gameObject) {
+      // Generate a unique ID
+      const entryId = Math.random().toString(36).substring(7);
+      this.entryIds.set(dataEntry, entryId);
+
+      // Use provided transform or default to origin
+      const entryTransform = transform || {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+
+      await dataEntry.load(entryId, entryTransform, []);
+      console.log(`[DataCluster] Added new entry (${entryId}) to cluster "${this.title}"`);
+
+      // Set up selection change handler
+      if (dataEntry.triggerInteraction) {
+        dataEntry.triggerInteraction.onSelectionStateChanged.addEventListener((event) => {
+          this.onSelectedDataEntryChanged(dataEntry);
+        });
+      }
+    }
+  }
+
+  public async removeDataEntry(dataEntry: DataEntry): Promise<void> {
+    const index = this.dataEntries.indexOf(dataEntry);
+    if (index !== -1) {
+      const entryId = this.entryIds.get(dataEntry);
+      if (this.selectedDataEntry === dataEntry) {
+        this.selectedDataEntry = null;
+      }
+      await dataEntry.unload();
+      this.dataEntries.splice(index, 1);
+      this.entryIds.delete(dataEntry);
+      console.log(`[DataCluster] Removed entry (${entryId}) from cluster "${this.title}"`);
+    }
+  }
+
+  public getDataEntry(id: string): DataEntry | undefined {
+    for (const [entry, entryId] of this.entryIds) {
+      if (entryId === id) {
+        return entry;
+      }
+    }
+    return undefined;
+  }
+
+  public getSelectedDataEntry(): DataEntry | null {
+    return this.selectedDataEntry;
+  }
+
+  private onSelectedDataEntryChanged(selectedEntry: DataEntry): void {
+    const entryId = this.entryIds.get(selectedEntry);
+    
+    // If this entry is already selected, this is a deselection
+    if (this.selectedDataEntry === selectedEntry) {
+      console.log(`[DataCluster] Deselecting entry ${entryId} in cluster "${this.title}"`);
+      this.selectedDataEntry = null;
+      selectedEntry.isActive = { newState: false, animate: true };
+      return;
+    }
+
+    console.log(`[DataCluster] Selected entry changed to ${entryId} in cluster "${this.title}"`);
+    this.selectedDataEntry = selectedEntry;
+    
+    // Activate the selected entry and deactivate all others
+    for (const entry of this.dataEntries) {
+      entry.isActive = { 
+        newState: entry === selectedEntry, 
+        animate: true 
+      };
+    }
+  }
+
+  public setMaterials(activeMaterial?: Material, inactiveMaterial?: Material): void {
+    this.activeMaterial = activeMaterial;
+    this.inactiveMaterial = inactiveMaterial;
+  }
+
+  public async createDataEntry(): Promise<DataEntry> {
+    const entry = new DataEntry(
+      this.dataEntryPrefab, 
+      this.dataAssetPrefab,
+      this.activeMaterial,
+      this.inactiveMaterial
+    );
+    this.gameObject.addComponent(entry);
+    return entry;
   }
 }
 
