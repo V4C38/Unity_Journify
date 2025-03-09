@@ -1,6 +1,7 @@
 import { AssetReference, GameObject, InstantiateOptions, Behaviour } from "@needle-tools/engine";
 import { DataEntry } from "./DataEntry";
 import { TriggerInteraction } from "./TriggerInteraction";
+import { Material } from "three";
 
 export class DataCluster extends Behaviour {
   public dataEntries: DataEntry[] = [];
@@ -14,6 +15,8 @@ export class DataCluster extends Behaviour {
   private title: string = "";
   private _isActive: boolean = true; // Active by default, right now there will only be one cluster
   private entryIds: Map<DataEntry, string> = new Map();
+  private activeMaterial?: Material;
+  private inactiveMaterial?: Material;
 
   constructor(prefab: AssetReference, dataEntryPrefab: AssetReference, dataAssetPrefab: AssetReference) {
     super();
@@ -139,19 +142,39 @@ export class DataCluster extends Behaviour {
 
   private onSelectedDataEntryChanged(selectedEntry: DataEntry): void {
     const entryId = this.entryIds.get(selectedEntry);
+    
+    // If this entry is already selected, this is a deselection
+    if (this.selectedDataEntry === selectedEntry) {
+      console.log(`[DataCluster] Deselecting entry ${entryId} in cluster "${this.title}"`);
+      this.selectedDataEntry = null;
+      selectedEntry.isActive = { newState: false, animate: true };
+      return;
+    }
+
     console.log(`[DataCluster] Selected entry changed to ${entryId} in cluster "${this.title}"`);
     this.selectedDataEntry = selectedEntry;
     
-    // Deactivate all other entries
+    // Activate the selected entry and deactivate all others
     for (const entry of this.dataEntries) {
-      if (entry !== selectedEntry) {
-        entry.isActive = { newState: false, animate: true };
-      }
+      entry.isActive = { 
+        newState: entry === selectedEntry, 
+        animate: true 
+      };
     }
   }
 
+  public setMaterials(activeMaterial?: Material, inactiveMaterial?: Material): void {
+    this.activeMaterial = activeMaterial;
+    this.inactiveMaterial = inactiveMaterial;
+  }
+
   public async createDataEntry(): Promise<DataEntry> {
-    const entry = new DataEntry(this.dataEntryPrefab, this.dataAssetPrefab);
+    const entry = new DataEntry(
+      this.dataEntryPrefab, 
+      this.dataAssetPrefab,
+      this.activeMaterial,
+      this.inactiveMaterial
+    );
     this.gameObject.addComponent(entry);
     return entry;
   }

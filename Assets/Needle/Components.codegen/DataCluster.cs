@@ -17,6 +17,7 @@ namespace Needle.Typescript.GeneratedComponents
 		public void removeDataEntry(Needle.Typescript.GeneratedComponents.DataEntry @dataEntry){}
 		public void getDataEntry(string @id){}
 		public void getSelectedDataEntry(){}
+		public void setMaterials(UnityEngine.Material @activeMaterial, UnityEngine.Material @inactiveMaterial){}
 		public void createDataEntry(){}
 	}
 }

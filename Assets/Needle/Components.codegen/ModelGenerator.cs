@@ -13,10 +13,10 @@ namespace Needle.Typescript.GeneratedComponents
 		public void onDestroy(){}
 		public void generateTestModel(){}
 		public void generateModel(string @prompt, string @statusCallback){}
-		public void onModelGenerated(string @modelUrl, string @prompt, string @uuid, string @title){}
+		public void onModelGenerated(string @modelUrl, string @prompt, string @uuid, string @title, string @targetClusterId, string @targetEntryId){}
 		public void downloadModel(string @modelUrl, string @filename){}
 		public void saveModelToPersistentData(string @modelURL){}
-		public void spawnModel(string @modelURL, string @prompt, string @uuid, string @title){}
+		public void spawnModel(string @modelURL, string @prompt, string @uuid, string @title, string @targetClusterId, string @targetEntryId){}
 	}
 }
 

@@ -44,7 +44,26 @@ export class ModelGenerator extends Behaviour {
             throw new Error("Model generation already in progress");
         }
 
-        console.log(`ModelGenerator: Starting model generation with prompt: "${prompt}"`);
+        if (!this.userArchive) {
+            throw new Error("UserArchive reference not set");
+        }
+
+        // Cache the current selections at the start
+        const selectedCluster = this.userArchive.selectedDataCluster;
+        if (!selectedCluster) {
+            throw new Error("No data cluster selected");
+        }
+
+        const selectedEntry = selectedCluster.getSelectedDataEntry();
+        if (!selectedEntry) {
+            throw new Error("No entry selected");
+        }
+
+        // Store the IDs for verification later
+        const targetClusterId = selectedCluster.id;
+        const targetEntryId = selectedEntry.id;
+
+        console.log(`ModelGenerator: Starting model generation with prompt: "${prompt}" for entry ${targetEntryId}`);
         this.onStatusUpdate = statusCallback || null;
         this.isGenerating = true;
         
@@ -82,8 +101,8 @@ export class ModelGenerator extends Behaviour {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ prompt }),
-                mode: 'cors', // Explicitly set CORS mode
-                credentials: 'omit' // Don't send credentials
+                mode: 'cors',
+                credentials: 'omit'
             });
             
             const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -94,10 +113,8 @@ export class ModelGenerator extends Behaviour {
                 const errorMessage = errorData.error || 'Failed to generate model';
                 console.error(`ModelGenerator: API error - ${errorMessage}`);
                 
-                // Update status text with error
                 this.updateStatusText(`Error: ${errorMessage}`);
                 
-                // Clear error message after a delay
                 setTimeout(() => {
                     if (!this.isGenerating) {
                         this.updateStatusText("");
@@ -115,18 +132,16 @@ export class ModelGenerator extends Behaviour {
                 prompt: data.prompt
             });
 
-            // Ensure the URL has the correct domain and path structure
             const modelUrl = data.modelUrl.startsWith('http') 
                 ? data.modelUrl 
                 : `https://www.v4c38.com${data.modelUrl.startsWith('/') ? '' : '/'}${data.modelUrl}`;
             
-            // Remove any double /api/ in the URL if present
             const cleanModelUrl = modelUrl.replace(/\/api\/api\//g, '/api/');
             
             console.log(`ModelGenerator: Using model URL: ${cleanModelUrl}`);
 
-            // Call the onModelGenerated method with all available data
-            this.onModelGenerated(cleanModelUrl, data.prompt || prompt, data.uuid, data.title);
+            // Pass the cached cluster and entry IDs to onModelGenerated
+            this.onModelGenerated(cleanModelUrl, data.prompt || prompt, data.uuid, data.title, targetClusterId, targetEntryId);
             
             return cleanModelUrl;
         } catch (error) {
@@ -144,13 +159,11 @@ export class ModelGenerator extends Behaviour {
         this.progressTimeouts = [];
     }
 
-    public onModelGenerated(modelUrl: string, prompt: string = "", uuid: string = "", title: string = "") {
-        console.log(`Model generated: ${modelUrl}`);
+    public onModelGenerated(modelUrl: string, prompt: string = "", uuid: string = "", title: string = "", targetClusterId: string, targetEntryId: string) {
+        console.log(`Model generated: ${modelUrl} for entry ${targetEntryId}`);
         
-        // Update status text to show completion
         this.updateStatusText("Model generation complete!");
         
-        // Clear status text after a delay
         setTimeout(() => {
             if (!this.isGenerating) {
                 this.updateStatusText("");
@@ -160,8 +173,8 @@ export class ModelGenerator extends Behaviour {
         this.isGenerating = false;
         this.saveModelToPersistentData(modelUrl);
         
-        // Use a proxy URL or direct URL with CORS mode
-        this.spawnModel(modelUrl, prompt, uuid, title);
+        // Pass the cached IDs to spawnModel
+        this.spawnModel(modelUrl, prompt, uuid, title, targetClusterId, targetEntryId);
     }
 
     public downloadModel(modelUrl: string, filename: string = "model.glb") {
@@ -218,7 +231,7 @@ export class ModelGenerator extends Behaviour {
         // IGNORE THIS FOR NOW
     }
 
-    public async spawnModel(modelURL: string, prompt: string = "", uuid: string = "", title: string = "") {
+    public async spawnModel(modelURL: string, prompt: string = "", uuid: string = "", title: string = "", targetClusterId: string, targetEntryId: string) {
         if (!this.userArchive) {
             console.error("ModelGenerator: Cannot spawn model - UserArchive reference not set");
             return;
@@ -228,46 +241,25 @@ export class ModelGenerator extends Behaviour {
         if (!this.userArchive.hasClusters()) {
             console.log("ModelGenerator: Waiting for UserArchive to load...");
             await this.userArchive.loadArchive();
-            
-            // Double check after loading
-            if (!this.userArchive.hasClusters()) {
-                const errorMessage = "Cannot spawn model - No data clusters available after loading archive";
-                console.error("ModelGenerator:", errorMessage);
-                this.updateStatusText(`Error: ${errorMessage}`);
-                return;
-            }
         }
 
-        // Try to select first cluster if none is selected
-        if (!this.userArchive.selectedDataCluster) {
-            const errorMessage = "Cannot spawn model - No data cluster selected";
+        // Since we cached the IDs at generation start, verify the cluster is still valid
+        if (this.userArchive.selectedDataCluster?.id !== targetClusterId) {
+            const errorMessage = `Cannot spawn model - Target cluster ${targetClusterId} is not selected or no longer exists`;
             console.error("ModelGenerator:", errorMessage);
             this.updateStatusText(`Error: ${errorMessage}`);
             return;
         }
 
-        // Get the selected data cluster
-        const selectedCluster = this.userArchive.selectedDataCluster;
-        if (!selectedCluster) {
-            const errorMessage = "Cannot spawn model - No data cluster selected";
+        const targetCluster = this.userArchive.selectedDataCluster;
+        
+        // Get the target entry by ID
+        const targetEntry = targetCluster.getDataEntry(targetEntryId);
+        if (!targetEntry) {
+            const errorMessage = `Cannot spawn model - Target entry ${targetEntryId} no longer exists`;
             console.error("ModelGenerator:", errorMessage);
             this.updateStatusText(`Error: ${errorMessage}`);
             return;
-        }
-
-        // Find or activate an entry in the selected cluster
-        let entryToUse = selectedCluster.dataEntries.find(entry => entry.isActive);
-        if (!entryToUse) {
-            // If no entry is active, try to activate the first one
-            if (selectedCluster.dataEntries.length > 0) {
-                entryToUse = selectedCluster.dataEntries[0];
-                entryToUse.isActive = { newState: true, animate: true };
-            } else {
-                const errorMessage = "Cannot spawn model - No entries available in selected cluster";
-                console.error("ModelGenerator:", errorMessage);
-                this.updateStatusText(`Error: ${errorMessage}`);
-                return;
-            }
         }
 
         // Create a new DataAsset for the model
@@ -284,19 +276,24 @@ export class ModelGenerator extends Behaviour {
         };
 
         try {
-            // Create the DataAsset
             if (!this.userArchive.dataAssetPrefab) {
                 throw new Error("No data asset prefab available");
             }
             
-            const dataAsset = await entryToUse.createDataAsset();
+            const dataAsset = await targetEntry.createDataAsset();
             dataAsset.uuid = assetData.UUID;
             dataAsset.modelURL = assetData.URL;
+            dataAsset.prompt = assetData.Prompt;
             
-            // Add the DataAsset to the active entry
-            await entryToUse.addDataAsset(dataAsset);
+            // Add the DataAsset to the target entry
+            await targetEntry.addDataAsset(dataAsset);
             
-            console.log(`ModelGenerator: Model spawned successfully`);
+            // Set visibility based on whether the target entry is currently selected
+            const currentlySelectedEntry = targetCluster.getSelectedDataEntry();
+            const shouldBeVisible = currentlySelectedEntry?.id === targetEntryId;
+            dataAsset.isActive = { newState: shouldBeVisible, animate: true };
+            
+            console.log(`ModelGenerator: Model spawned successfully (visible: ${shouldBeVisible}, added to entry: ${targetEntryId})`);
             this.updateStatusText("Model spawned successfully");
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown error spawning model";

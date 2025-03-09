@@ -1,7 +1,8 @@
-import { Behaviour, serializable, AssetReference, GameObject } from "@needle-tools/engine";
+import { Behaviour, serializable, AssetReference } from "@needle-tools/engine";
 import { DataCluster } from "./DataCluster";
 import { DataEntry } from "./DataEntry";
 import { PersistentDataInterface } from "./PersistentDataInterface";
+import { Material } from "three";
 
 export class UserArchive extends Behaviour {
     @serializable(AssetReference)
@@ -12,6 +13,12 @@ export class UserArchive extends Behaviour {
     
     @serializable(AssetReference)
     public dataAssetPrefab?: AssetReference;
+
+    @serializable(Material)
+    public activeMaterial?: Material;
+
+    @serializable(Material)
+    public inactiveMaterial?: Material;
 
     private dataClusters: DataCluster[] = [];
     public selectedDataCluster: DataCluster | null = null;
@@ -57,6 +64,7 @@ export class UserArchive extends Behaviour {
             throw new Error("[UserArchive] All prefabs must be set before creating a cluster");
         }
         const cluster = new DataCluster(this.dataClusterPrefab, this.dataEntryPrefab, this.dataAssetPrefab);
+        cluster.setMaterials(this.activeMaterial, this.inactiveMaterial);
         this.gameObject.addComponent(cluster);
         return cluster;
     }
@@ -140,6 +148,66 @@ export class UserArchive extends Behaviour {
     public hasClusters(): boolean {
         return this.dataClusters.length > 0;
     }
+
+    // --------------------------------------------------------------------------
+
+    // Cluster Management will be handled in the future
+
+    public async addNewEntry() {
+        // If no cluster exists or none is selected, create a new one
+        if (!this.selectedDataCluster) {
+            if (!this.hasClusters()) {
+                const newCluster = await this.createDataCluster();
+                await newCluster.load(
+                    crypto.randomUUID(),
+                    "New Cluster",
+                    []
+                );
+                this.dataClusters.push(newCluster);
+            }
+            this.selectedDataCluster = this.dataClusters[0];
+        }
+
+        // Create and add the new entry to the selected cluster
+        const newEntry = await this.selectedDataCluster.createDataEntry();
+        const entryTransform = {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+        };
+        
+        await this.selectedDataCluster.addDataEntry(newEntry, entryTransform);
+        
+        // Set the materials
+        newEntry.setMaterials(this.activeMaterial || null, this.inactiveMaterial || null);
+        
+        // Trigger the selection through the entry's isActive property
+        newEntry.isActive = { newState: true, animate: true };
+    }
+
+    public async removeSelectedEntry() {
+        if (!this.selectedDataCluster) {
+            console.warn("[UserArchive] No cluster selected, cannot remove entry");
+            return;
+        }
+
+        const selectedEntry = this.selectedDataCluster.selectedDataEntry;
+        if (!selectedEntry) {
+            console.warn("[UserArchive] No entry selected to remove");
+            return;
+        }
+
+        // Unload all assets in the entry
+        for (const asset of selectedEntry.dataAssets) {
+            await asset.unload();
+        }
+
+        // Remove the entry from the cluster
+        await this.selectedDataCluster.removeDataEntry(selectedEntry);
+    }
+    
+    // --------------------------------------------------------------------------
+
 
     public async unloadArchive(): Promise<void> {
         console.log("[UserArchive] Unloading archive...");

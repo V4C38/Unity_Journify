@@ -1,6 +1,4 @@
 import { GameObject, AssetReference, InstantiateOptions, Behaviour } from "@needle-tools/engine";
-import { Vector3 } from "three";
-import * as TWEEN from "three/examples/jsm/libs/tween.module.js";
 
 export class DataAsset extends Behaviour {
   public uuid: string = "";
@@ -9,8 +7,6 @@ export class DataAsset extends Behaviour {
   private prefab: AssetReference;
   public modelURL: string = "";
 
-  private targetScale: Vector3 = new Vector3(1, 1, 1);
-  private activeScale: Vector3 = new Vector3(1, 1, 1);
   private _isActive: boolean = false;
   private modelInstance: GameObject | null = null;
 
@@ -32,33 +28,15 @@ export class DataAsset extends Behaviour {
     }
     
     console.log(`[DataAsset] ${this.uuid} - Setting active state to ${value.newState}`);
-    if (value.newState) {
-      this.targetScale = this.activeScale;
-    } else {
-      this.activeScale = this.gameObject.scale.clone();
-      this.targetScale = new Vector3(0, 0, 0);
+    this._isActive = value.newState;
+    
+    // Set visibility for both the container and the model instance
+    if (this.gameObject) {
+      this.gameObject.visible = value.newState;
     }
-
-    if (value.animate) {
-      this.animateToState(value.newState);
+    if (this.modelInstance) {
+      this.modelInstance.visible = value.newState;
     }
-  }
-
-  private animateToState(newState: boolean): void {
-    if (!this.gameObject) return;
-
-    const currentScale = this.gameObject.scale.clone();
-    const targetScale = newState ? this.targetScale : new Vector3(0, 0, 0);
-
-    new TWEEN.Tween(currentScale)
-      .to(targetScale, 500)
-      .easing(TWEEN.Easing.Elastic.Out)
-      .onUpdate(() => {
-        if (this.gameObject) {
-          this.gameObject.scale.copy(currentScale);
-        }
-      })
-      .start();
   }
 
   public get activeInHierarchy(): boolean {
@@ -81,6 +59,9 @@ export class DataAsset extends Behaviour {
       options.context = context;
       console.log("[DataAsset] Attempting to instantiate prefab...");
       this.gameObject = await this.prefab.instantiateSynced(options) as GameObject;
+      
+      // Set initial visibility state
+      this.gameObject.visible = this._isActive;
       console.log("[DataAsset] Prefab instantiated successfully");
 
       // Load the model from URL if provided
@@ -102,6 +83,9 @@ export class DataAsset extends Behaviour {
           }
 
           this.gameObject.add(this.modelInstance);
+          
+          // Set initial visibility state for model instance
+          this.modelInstance.visible = this._isActive;
           
           // Reset the model's local transform
           this.modelInstance.position.set(0, 0, 0);
