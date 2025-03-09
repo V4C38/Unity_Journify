@@ -1,442 +1,165 @@
-import { GameObject, AssetReference, InstantiateOptions, EventList, Behaviour } from "@needle-tools/engine";
-import { IPersistable, ITransformData, PersistentDataInterface } from "./PersistentDataInterface";
-import { Vector3, Object3D } from "three";
-import { DragControls } from "@needle-tools/engine";
-import { PointerEventData } from "@needle-tools/engine";
+import { GameObject, AssetReference, InstantiateOptions, Behaviour } from "@needle-tools/engine";
+import { Vector3 } from "three";
 import * as TWEEN from "three/examples/jsm/libs/tween.module.js";
 
-// Event for position changes
-export type PositionChangeEvent = {
-  asset: DataAsset;
-  newPosition: Vector3;
-  oldPosition: Vector3;
-};
+export class DataAsset extends Behaviour {
+  public uuid: string = "";
+  public prompt: string = "";
+  declare public gameObject: GameObject;  // Using declare to avoid overwriting base property
+  private prefab: AssetReference;
+  public modelURL: string = "";
 
-// Custom component to handle pointer events
-class DragEventHandler extends Behaviour {
-  public dataAsset: DataAsset | null = null;
-  
-  onPointerUp(evt: PointerEventData): void {
-    if (this.dataAsset) {
-      this.dataAsset.onDragEnd();
-    }
-  }
-}
-
-export class DataAsset implements IPersistable {
-  public uuid: string;
-  public title: string;
-  public prompt: string;
-  public transformData: ITransformData;
-  public url: string;
-  public instance: GameObject | null = null;
-  public prefab?: AssetReference;
-  public modelInstance: GameObject | null = null;
-  private persistentData: PersistentDataInterface | null = null;
-  private dragControls: DragControls | null = null;
-  private eventHandler: DragEventHandler | null = null;
-  private transformChanged: boolean = false;
-  private handleDragEnd: ((dragControls: DragControls, object: Object3D, eventData: PointerEventData | null) => void) | null = null;
-  private visibilityTween: TWEEN.Tween<any> | null = null;
   private targetScale: Vector3 = new Vector3(1, 1, 1);
-  
-  private _isActive: boolean = true;
+  private activeScale: Vector3 = new Vector3(1, 1, 1);
+  private _isActive: boolean = false;
+  private modelInstance: GameObject | null = null;
+
+  constructor(prefab: AssetReference) {
+    super();
+    if (!prefab) {
+      throw new Error("[DataAsset] Prefab is required in constructor");
+    }
+    this.prefab = prefab;
+  }
 
   public get isActive(): boolean {
     return this._isActive;
   }
 
-  public set isActive(value: boolean) {
-    if (this._isActive !== value) {
-      this._isActive = value;
-      
-      // Update instance visibility if it exists
-      if (this.instance) {
-        this.instance.visible = value;
-      }
-      
-      // Update persistent data if active state changes
-      if (this.persistentData && this.uuid) {
-        this.persistentData.updateObjectData(this.uuid);
-      }
-    }
-  }
-  
-  // Event that fires when position changes
-  public readonly onPositionChanged = new EventList<PositionChangeEvent>();
-
-  constructor(data: any, prefab?: AssetReference) {
-    this.uuid = data.UUID || "";
-    this.title = data.Title;
-    this.prompt = data.Prompt;
-    this.transformData = data.transform;
-    this.url = data.URL;
-    this.prefab = prefab;
-  }
-
-  // Register with the persistent data interface
-  public registerWithPersistentData(persistentData: PersistentDataInterface): void {
-    this.persistentData = persistentData;
-    persistentData.registerObject(this);
-    
-    // Set up drag controls if we have an instance
-    if (this.instance) {
-      this.setupDragControlsEvents();
-    }
-  }
-  
-  // Set up drag controls event handling
-  private setupDragControlsEvents(): void {
-    if (!this.instance) return;
-    
-    // Find the DragControls component on the instance
-    this.dragControls = this.instance.getComponent(DragControls);
-    
-    if (!this.dragControls) {
-      console.warn(`No DragControls found on instance for "${this.title}"`);
+  public set isActive(value: { newState: boolean; animate: boolean }) {
+    if (this._isActive === value.newState) {
       return;
     }
     
-    // Add event handler component if it doesn't exist
-    if (!this.eventHandler) {
-      this.eventHandler = this.instance.addComponent(DragEventHandler);
-      this.eventHandler.dataAsset = this;
+    console.log(`[DataAsset] ${this.uuid} - Setting active state to ${value.newState}`);
+    if (value.newState) {
+      this.targetScale = this.activeScale;
+    } else {
+      this.activeScale = this.gameObject.scale.clone();
+      this.targetScale = new Vector3(0, 0, 0);
     }
-  }
-  
-  // Called when transform changes
-  public onTransformChanged(): void {
-    if (!this.instance) return;
-    
-    // Store old transform for logging
-    const oldPosition = this.transformData.position ? [...this.transformData.position] : [0, 0, 0];
-    
-    // Update transform data
-    this.updateTransformDataFromInstance();
-    
-    // Emit position changed event
-    this.onPositionChanged.invoke({
-      asset: this,
-      newPosition: this.instance.position.clone(),
-      oldPosition: new Vector3(oldPosition[0], oldPosition[1], oldPosition[2])
-    });
-    
-    // Update persistent data
-    this.saveTransformData();
-  }
-  
-  // Called when dragging finishes
-  public onDragEnd(): void {
-    if (!this.instance) return;
-    
-    // Update transform data and save
-    this.onTransformChanged();
-  }
-  
-  // Save transform data to persistent storage
-  private saveTransformData(): void {
-    if (this.persistentData && this.uuid) {
-      this.persistentData.updateObjectData(this.uuid);
-      this.persistentData.markObjectChanged(this.uuid);
-    }
-  }
-  
-  // Implement IPersistable interface
-  public getSerializableData(): any {
-    // Update transform data from the current instance if available
-    if (this.instance) {
-      this.updateTransformDataFromInstance();
-    }
-    
-    // Create a copy of transform data without scale for serialization
-    const transformDataForSerialization = {
-      position: this.transformData.position,
-      rotation: this.transformData.rotation
-      // Intentionally omitting scale as requested
-    };
-    
-    return {
-      UUID: this.uuid,
-      Title: this.title,
-      Prompt: this.prompt,
-      transform: transformDataForSerialization,
-      URL: this.url,
-      IsActive: this._isActive
-    };
-  }
-  
-  // Update from data
-  public updateFromData(data: any): void {
-    if (data.Title) this.title = data.Title;
-    if (data.Prompt) this.prompt = data.Prompt;
-    if (data.transform) this.transformData = data.transform;
-    if (data.URL) this.url = data.URL;
-    
-    // For backward compatibility, handle IsActive if present
-    if (data.IsActive !== undefined) {
-      this._isActive = data.IsActive;
-      
-      // Update instance visibility if it exists
-      if (this.instance) {
-        this.instance.visible = this._isActive;
-      }
-    }
-    
-    // Update the instance if it exists
-    if (this.instance && data.transform) {
-      this.updateInstanceFromTransformData();
-      
-      // Store the target scale from the transform data
-      if (data.transform.scale) {
-        this.targetScale = new Vector3(
-          data.transform.scale[0],
-          data.transform.scale[1],
-          data.transform.scale[2]
-        );
-      }
-    }
-  }
-  
-  // Update transform data from the instance
-  private updateTransformDataFromInstance(): void {
-    if (!this.instance) return;
-    
-    // Store absolute world position since assets are no longer parented
-    this.transformData = {
-      position: [
-        this.instance.position.x,
-        this.instance.position.y,
-        this.instance.position.z
-      ],
-      rotation: [
-        this.instance.rotation.x * (180 / Math.PI),
-        this.instance.rotation.y * (180 / Math.PI),
-        this.instance.rotation.z * (180 / Math.PI)
-      ],
-      // Still track scale internally but don't save it to JSON
-      scale: [
-        this.instance.scale.x,
-        this.instance.scale.y,
-        this.instance.scale.z
-      ]
-    };
-  }
-  
-  // Update instance from transform data
-  public updateInstanceFromTransformData(): void {
-    if (!this.instance || !this.transformData) return;
-    
-    if (this.transformData.position) {
-      // Apply absolute position
-      this.instance.position.set(
-        this.transformData.position[0],
-        this.transformData.position[1],
-        this.transformData.position[2]
-      );
-    }
-    
-    if (this.transformData.rotation) {
-      this.instance.rotation.set(
-        this.transformData.rotation[0] * (Math.PI / 180),
-        this.transformData.rotation[1] * (Math.PI / 180),
-        this.transformData.rotation[2] * (Math.PI / 180)
-      );
-    }
-    
-    if (this.transformData.scale) {
-      this.instance.scale.set(
-        this.transformData.scale[0],
-        this.transformData.scale[1],
-        this.transformData.scale[2]
-      );
+
+    if (value.animate) {
+      this.animateToState(value.newState);
     }
   }
 
-  public async load(parent: GameObject, context: any): Promise<void> {
-    // First, instantiate the prefab (which has DragControls, SelectableObject, MeshRenderer, CubeCollisions)
-    if (this.prefab) {
+  private animateToState(newState: boolean): void {
+    if (!this.gameObject) return;
+
+    const currentScale = this.gameObject.scale.clone();
+    const targetScale = newState ? this.targetScale : new Vector3(0, 0, 0);
+
+    new TWEEN.Tween(currentScale)
+      .to(targetScale, 500)
+      .easing(TWEEN.Easing.Elastic.Out)
+      .onUpdate(() => {
+        if (this.gameObject) {
+          this.gameObject.scale.copy(currentScale);
+        }
+      })
+      .start();
+  }
+
+  public get activeInHierarchy(): boolean {
+    return this._isActive && this.gameObject?.parent != null;
+  }
+
+  // This is called from DataEntry with the data to create the asset
+  public async load(context: any, transform: any, modelURL: string): Promise<void> {
+    console.log(`[DataAsset] Loading asset with model URL: ${modelURL}`);
+    this.modelURL = modelURL;
+
+    // First, instantiate the prefab
+    if (!this.prefab) {
+      console.error("[DataAsset] No prefab set for DataAsset");
+      throw new Error("No prefab set for DataAsset");
+    }
+
+    try {
       const options = new InstantiateOptions();
       options.context = context;
-      this.instance = await this.prefab.instantiateSynced(options) as GameObject;
-      
-      // Add the instance to the scene root instead of the parent
-      // This makes it a standalone object
-      context.scene.add(this.instance);
-      
-      // Ensure the instance is at 0,0,0
-      this.instance.position.set(0, 0, 0);
-      this.instance.rotation.set(0, 0, 0);
-    } else {
-      console.error("No prefab provided for DataAsset:", this.title);
-      return;
-    }
-    
-    // Apply transform data (position, rotation, scale)
-    if (this.transformData) {
-      this.updateInstanceFromTransformData();
-      
-      // Store the target scale from the transform data
-      if (this.transformData.scale) {
-        this.targetScale = new Vector3(
-          this.transformData.scale[0],
-          this.transformData.scale[1],
-          this.transformData.scale[2]
-        );
-      }
-    } else {
-      // If no transform data, set to default position (near parent's position)
-      const parentPosition = parent.position.clone();
-      this.instance.position.copy(parentPosition);
-    }
-    
-    // Now load the model from the URL and parent it to the prefab instance
-    if (this.url) {
-      try {
-        console.log(`DataAsset: Loading model from URL: ${this.url}`);
-        
-        // Check if the URL is accessible before trying to load it
+      console.log("[DataAsset] Attempting to instantiate prefab...");
+      this.gameObject = await this.prefab.instantiateSynced(options) as GameObject;
+      console.log("[DataAsset] Prefab instantiated successfully");
+
+      // Load the model from URL if provided
+      if (this.modelURL) {
         try {
-          // Create a modified URL for the model that includes CORS headers
-          // If the URL is from v4c38.com, ensure it's using the proper format
-          let modelUrl = this.url;
-          
-          // Log the URL we're using
-          console.log(`DataAsset: Using model URL: ${modelUrl}`);
-          
-          // Create the asset reference with the URL
-          const modelAsset = AssetReference.getOrCreate(modelUrl, modelUrl, context);
+          console.log(`[DataAsset] Creating AssetReference for model URL: ${this.modelURL}`);
+          const modelAsset = AssetReference.getOrCreate(this.modelURL, this.modelURL, context);
+          if (!modelAsset) {
+            throw new Error("Failed to create AssetReference for model");
+          }
+
           const modelOptions = new InstantiateOptions();
           modelOptions.context = context;
           
-          // Load the model
+          console.log("[DataAsset] Attempting to instantiate model...");
           this.modelInstance = await modelAsset.instantiate(modelOptions) as GameObject;
+          if (!this.modelInstance) {
+            throw new Error("Model instantiation returned null");
+          }
+
+          this.gameObject.add(this.modelInstance);
           
-          // Parent the model to the prefab instance
-          this.instance.add(this.modelInstance);
-          
-          // Reset the model's local position, rotation, and scale
-          // This ensures it's positioned correctly relative to the prefab
+          // Reset the model's local transform
           this.modelInstance.position.set(0, 0, 0);
           this.modelInstance.rotation.set(0, 0, 0);
           this.modelInstance.scale.set(1, 1, 1);
-          
-          console.log(`DataAsset: Successfully loaded model for ${this.title}`);
+
+          // Apply transform data after model is loaded and added
+          if (transform) {
+            if (transform.position) {
+              this.gameObject.position.set(
+                transform.position[0],
+                transform.position[1],
+                transform.position[2]
+              );
+            }
+            if (transform.rotation) {
+              this.gameObject.rotation.set(
+                transform.rotation[0] * (Math.PI / 180), // Convert from degrees to radians
+                transform.rotation[1] * (Math.PI / 180),
+                transform.rotation[2] * (Math.PI / 180)
+              );
+            }
+            if (transform.scale) {
+              this.gameObject.scale.set(
+                transform.scale[0],
+                transform.scale[1],
+                transform.scale[2]
+              );
+            }
+          }
+
+          console.log(`[DataAsset] Model loaded successfully: ${modelURL}`);
         } catch (error) {
-          console.error(`DataAsset: Error loading model: ${error instanceof Error ? error.message : String(error)}`);
+          console.error(`[DataAsset] Failed to load model from URL: ${modelURL}`, error);
           throw error;
         }
-      } catch (error) {
-        console.error(`Failed to load model from URL: ${this.url} for DataAsset: ${this.title}`, error);
-        throw error; // Re-throw to allow caller to handle the error
+      } else {
+        console.warn("[DataAsset] No model URL provided");
       }
-    }
-    
-    // Set up drag controls if we have a persistent data interface
-    if (this.persistentData) {
-      this.setupDragControlsEvents();
+    } catch (error) {
+      console.error("[DataAsset] Failed to load asset:", error);
+      throw error;
     }
   }
 
-  public unload(): void {
-    // Unregister from persistent data
-    if (this.persistentData && this.uuid) {
-      this.persistentData.unregisterObject(this.uuid);
-      this.persistentData = null;
+  // this is called when the asset is removed from the scene
+  public async unload(): Promise<void> {
+    console.log(`[DataAsset] Unloading asset with model URL: ${this.modelURL}`);
+    if (this.modelInstance) {
+      this.gameObject.remove(this.modelInstance);
+      this.modelInstance.destroy();
+      this.modelInstance = null;
     }
-    
-    // The modelInstance will be automatically destroyed when the instance is destroyed
-    // because it's a child of the instance
-    this.instance?.destroy();
-    this.instance = null;
-    this.modelInstance = null;
-    this.dragControls = null;
-    this.eventHandler = null;
-  }
 
-  /**
-   * Sets the active state of the asset with animation
-   * @param active Whether the asset should be active
-   * @param duration Animation duration in seconds
-   */
-  public setIsActiveWithAnimation(active: boolean, duration: number = 0.5): void {
-    if (!this.instance) return;
-    
-    // Update the isActive property
-    this._isActive = active;
-    
-    // Cancel any existing animation
-    if (this.visibilityTween) {
-      this.visibilityTween.stop();
-      this.visibilityTween = null;
+    if (this.gameObject) {
+      this.gameObject.destroy();
     }
-    
-    // If we're showing the asset
-    if (active) {
-      // Make it visible immediately
-      this.instance.visible = true;
-      
-      // Create a scale-up animation
-      const currentScale = this.instance.scale.clone();
-      const targetScaleObj = { 
-        x: this.targetScale.x, 
-        y: this.targetScale.y, 
-        z: this.targetScale.z 
-      };
-      
-      this.visibilityTween = new TWEEN.Tween({ 
-        x: currentScale.x, 
-        y: currentScale.y, 
-        z: currentScale.z 
-      })
-        .to(targetScaleObj, duration * 1000)
-        .easing(TWEEN.Easing.Elastic.Out)
-        .onUpdate((obj) => {
-          if (this.instance) {
-            this.instance.scale.set(obj.x, obj.y, obj.z);
-          }
-        })
-        .start();
-    } 
-    // If we're hiding the asset
-    else {
-      // Create a scale-down animation
-      const currentScale = this.instance.scale.clone();
-      
-      this.visibilityTween = new TWEEN.Tween({ 
-        x: currentScale.x, 
-        y: currentScale.y, 
-        z: currentScale.z 
-      })
-        .to({ x: 0, y: 0, z: 0 }, duration * 1000)
-        .easing(TWEEN.Easing.Back.In)
-        .onUpdate((obj) => {
-          if (this.instance) {
-            this.instance.scale.set(obj.x, obj.y, obj.z);
-          }
-        })
-        .onComplete(() => {
-          // Hide the asset after the animation completes
-          if (this.instance) {
-            this.instance.visible = false;
-          }
-        })
-        .start();
-    }
-    
-    // Make sure TWEEN updates are called
-    const updateTween = () => {
-      TWEEN.update();
-      if (this.visibilityTween) {
-        requestAnimationFrame(updateTween);
-      }
-    };
-    requestAnimationFrame(updateTween);
+    console.log(`[DataAsset] Asset unloaded successfully`);
   }
   
-  /**
-   * @deprecated Use setIsActiveWithAnimation instead
-   */
-  public setVisibilityWithAnimation(visible: boolean, duration: number = 0.5): void {
-    this.setIsActiveWithAnimation(visible, duration);
-  }
 }

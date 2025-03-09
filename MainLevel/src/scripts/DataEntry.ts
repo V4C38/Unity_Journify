@@ -1,334 +1,167 @@
-import { AssetReference, GameObject, InstantiateOptions, syncField, EventList, Behaviour } from "@needle-tools/engine";
-import { DataAsset, PositionChangeEvent } from "./DataAsset";
-import { SelectableObject } from "./SelectableObject";
-import { IPersistable, PersistentDataInterface } from "./PersistentDataInterface";
-import { Vector3 } from "three";
-import { DragControls } from "@needle-tools/engine";
-import { PointerEventData } from "@needle-tools/engine";
+import { AssetReference, GameObject, InstantiateOptions, Behaviour } from "@needle-tools/engine";
+import { DataAsset } from "./DataAsset";
+import { TriggerInteraction } from "./TriggerInteraction";
 
-// Define the event type for entry selection
-export type EntrySelectedEvent = {
-  entry: DataEntry;
-  isSelected: boolean;
-};
-
-// Custom component to handle pointer events for DataEntry
-class EntryDragEventHandler extends Behaviour {
-  public dataEntry: DataEntry | null = null;
-  
-  onPointerUp(evt: PointerEventData): void {
-    if (this.dataEntry) {
-      this.dataEntry.onDragEnd();
-    }
-  }
-}
-
-export class DataEntry implements IPersistable {
-  public uuid: string;
-  public title: string;
+export class DataEntry extends Behaviour {
   public dataAssets: DataAsset[] = [];
-  public prefab?: AssetReference;
-  public instance: GameObject | null = null;
-  public selectable: SelectableObject | null = null;
-  private dataAssetPrefab?: AssetReference;
-  public location: number[] | null = null;
-  private persistentData: PersistentDataInterface | null = null;
-  private positionChanged: boolean = false;
-  private dragControls: DragControls | null = null;
-  private eventHandler: EntryDragEventHandler | null = null;
-  private context: any = null;
-
-  // Event that fires when this entry is selected
-  public readonly onSelected = new EventList<EntrySelectedEvent>();
+  declare public gameObject: GameObject;  // Using declare to avoid overwriting base property
+  private prefab: AssetReference;
+  private dataAssetPrefab: AssetReference;
+  
+  public triggerInteraction: TriggerInteraction | null = null;
+  private transform: any = null;
+  private uuid: string = "";
 
   private _isActive: boolean = false;
+
+  constructor(prefab: AssetReference, dataAssetPrefab: AssetReference) {
+    super();
+    if (!prefab || !dataAssetPrefab) {
+      throw new Error("[DataEntry] Both prefab and dataAssetPrefab are required in constructor");
+    }
+    this.prefab = prefab;
+    this.dataAssetPrefab = dataAssetPrefab;
+  }
+
+  public get id(): string {
+    return this.uuid;
+  }
 
   public get isActive(): boolean {
     return this._isActive;
   }
 
-  public set isActive(value: boolean) {
-    if (this._isActive !== value) {
-      this._isActive = value;
-      this.updateAssetsVisibility();
-      
-      // Update persistent data if active state changes
-      if (this.persistentData && this.uuid) {
-        this.persistentData.updateObjectData(this.uuid);
-      }
-    }
-  }
-
-  constructor(data: any, prefab?: AssetReference, dataAssetPrefab?: AssetReference) {
-    this.uuid = data.UUID || "";
-    this.title = data.Title;
-    this.prefab = prefab;
-    this.dataAssetPrefab = dataAssetPrefab;
-    this.location = data.Location || null;
-    if (data.DataAssets) {
-      for (const assetData of data.DataAssets) {
-        this.dataAssets.push(new DataAsset(assetData, this.dataAssetPrefab));
-      }
-    }
-  }
-  
-  // Register with the persistent data interface
-  public registerWithPersistentData(persistentData: PersistentDataInterface): void {
-    this.persistentData = persistentData;
-    persistentData.registerObject(this);
-    
-    // Register all data assets
-    for (const asset of this.dataAssets) {
-      asset.registerWithPersistentData(persistentData);
-      
-      // Listen for position changes on assets
-      asset.onPositionChanged.addEventListener(this.handleAssetPositionChanged);
-    }
-    
-    // Set up drag controls if we have an instance
-    if (this.instance) {
-      this.setupDragControlsEvents();
-    }
-  }
-  
-  // Set up drag controls event handling
-  private setupDragControlsEvents(): void {
-    if (!this.instance) return;
-    
-    // Find the DragControls component on the instance
-    this.dragControls = this.instance.getComponent(DragControls);
-    
-    if (!this.dragControls) {
-      console.warn(`No DragControls found on instance for "${this.title}"`);
+  // when the triggerInteraction is selected, set isActive to true / false if unselected
+  public set isActive(value: { newState: boolean; animate: boolean }) {
+    if (this._isActive === value.newState) {
       return;
     }
     
-    // Add event handler component if it doesn't exist
-    if (!this.eventHandler) {
-      this.eventHandler = this.instance.addComponent(EntryDragEventHandler);
-      this.eventHandler.dataEntry = this;
+    console.log(`[DataEntry] ${this.uuid} - Setting active state to ${value.newState}`);
+    this._isActive = value.newState;
+    
+    // Update all data assets
+    for (const asset of this.dataAssets) {
+      asset.isActive = value;
     }
   }
-  
-  // Called when position changes
-  public onPositionChanged(): void {
-    if (!this.instance || !this.location) return;
-    
-    // Get current position
-    const currentPosition = [
-      this.instance.position.x,
-      this.instance.position.y,
-      this.instance.position.z
-    ];
-    
-    // Update location
-    this.location = currentPosition;
-    this.positionChanged = true;
-    
-    // Save position data
-    this.savePositionData();
-  }
-  
-  // Save position data to persistent storage
-  private savePositionData(): void {
-    if (this.persistentData && this.uuid) {
-      this.persistentData.updateObjectData(this.uuid);
-      this.persistentData.markObjectChanged(this.uuid);
+
+  public async load(uuid: string, transform: any, dataAssets: DataAsset[]): Promise<void> {
+    if (!this.prefab) {
+      console.error("[DataEntry] No prefab set for DataEntry");
+      return;
     }
-  }
-  
-  // Handle asset position changes
-  private handleAssetPositionChanged = (event: PositionChangeEvent): void => {
-    // Mark this entry as changed when any of its assets change position
-    this.positionChanged = true;
-    
-    // Update persistent data
-    if (this.persistentData && this.uuid) {
-      this.persistentData.updateObjectData(this.uuid);
+
+    console.log(`[DataEntry] Loading entry ${uuid}`);
+    this.uuid = uuid;
+    this.transform = transform;
+
+    // Instantiate the prefab
+    const options = new InstantiateOptions();
+    options.context = this.context;
+    this.gameObject = await this.prefab.instantiateSynced(options) as GameObject;
+
+    // Apply transform if provided
+    if (transform) {
+      if (transform.position) {
+        this.gameObject.position.set(
+          transform.position[0],
+          transform.position[1],
+          transform.position[2]
+        );
+      }
+      if (transform.rotation) {
+        this.gameObject.rotation.set(
+          transform.rotation[0] * (Math.PI / 180),
+          transform.rotation[1] * (Math.PI / 180),
+          transform.rotation[2] * (Math.PI / 180)
+        );
+      }
+      if (transform.scale) {
+        this.gameObject.scale.set(
+          transform.scale[0],
+          transform.scale[1],
+          transform.scale[2]
+        );
+      }
     }
-  };
-  
-  // Implement IPersistable interface
-  public getSerializableData(): any {
-    // Update location from instance if available
-    if (this.instance) {
-      this.location = [
-        this.instance.position.x,
-        this.instance.position.y,
-        this.instance.position.z
-      ];
-    }
-    
-    // Get serializable data for all assets
-    const dataAssets = this.dataAssets.map(asset => {
-      return asset.getSerializableData();
-    });
-    
-    return {
-      UUID: this.uuid,
-      Title: this.title,
-      Location: this.location,
-      DataAssets: dataAssets
+
+    // Add TriggerInteraction component
+    this.triggerInteraction = this.gameObject.addComponent(TriggerInteraction);
+    const selectionHandler = (event: { isSelected: boolean }) => {
+      this.isActive = { newState: event.isSelected, animate: true };
     };
-  }
-  
-  // Update from data
-  public updateFromData(data: any): void {
-    if (data.Title) this.title = data.Title;
-    
-    if (data.Location) this.location = data.Location;
-    
-    // Update the instance position if it exists
-    if (this.instance && data.Location) {
-      this.instance.position.set(
-        data.Location[0],
-        data.Location[1],
-        data.Location[2]
-      );
-      
-      console.log(`DataEntry: Updated position to [${data.Location[0]}, ${data.Location[1]}, ${data.Location[2]}] for "${this.title}"`);
-    }
-    
-    // Update data assets if provided
-    if (data.DataAssets) {
-      // Match assets by UUID
-      for (const assetData of data.DataAssets) {
-        const asset = this.dataAssets.find(a => a.uuid === assetData.UUID);
-        if (asset) {
-          asset.updateFromData(assetData);
-        }
-      }
-    }
-    
-    // For backward compatibility, handle IsActive if present
-    if (data.IsActive !== undefined) {
-      this._isActive = data.IsActive;
-      this.updateAssetsVisibility();
-      console.log(`DataEntry: Updated active state to ${this._isActive} for "${this.title}"`);
-    }
-  }
+    this.triggerInteraction.onSelectionStateChanged.addEventListener(selectionHandler);
 
-  private updateAssetsVisibility(): void {
+    // Load all data assets
+    this.dataAssets = dataAssets;
     for (const asset of this.dataAssets) {
-      if (asset.instance) {
-        asset.setIsActiveWithAnimation(this._isActive);
-      }
+      // Create a transform for the asset based on its current position in the array
+      const assetTransform = {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      await asset.load(this.context, assetTransform, asset.modelURL);
     }
+    console.log(`[DataEntry] Entry ${uuid} loaded with ${dataAssets.length} assets`);
   }
 
-  public async load(parent: GameObject, context: any): Promise<void> {
-    // Store the context for later use
-    this.context = context;
-    
-    if (this.prefab) {
-      const options = new InstantiateOptions();
-      options.context = context;
-      this.instance = await this.prefab.instantiateSynced(options) as GameObject;
-      parent.add(this.instance);
-      
-      // Set the position of the instance based on the location property
-      if (this.location && this.instance) {
-        this.instance.position.set(this.location[0], this.location[1], this.location[2]);
-      }
-    } else {
-      console.error("No prefab provided for DataEntry:", this.title);
-      return;
-    }
-    
-    this.selectable = this.instance.addComponent(SelectableObject);
-    this.selectable.onSelectionChanged.addEventListener(this.handleSelectionChanged);
-    
-    // Set up drag controls if we have a persistent data interface
-    if (this.persistentData) {
-      this.setupDragControlsEvents();
-    }
-    
+  public async unload(): Promise<void> {
+    console.log(`[DataEntry] Unloading entry ${this.uuid}`);
+    // Unload all data assets
     for (const asset of this.dataAssets) {
-      await asset.load(this.instance, context);
-      
-      // Register with persistent data if available
-      if (this.persistentData) {
-        asset.registerWithPersistentData(this.persistentData);
-        asset.onPositionChanged.addEventListener(this.handleAssetPositionChanged);
-      }
+      await asset.unload();
     }
-    
-    // Set visibility for all assets after they're loaded
-    this.updateAssetsVisibility();
+    this.dataAssets = [];
+
+    // Clean up trigger interaction
+    if (this.triggerInteraction) {
+      this.triggerInteraction.onSelectionStateChanged.removeAllEventListeners();
+      this.triggerInteraction = null;
+    }
+
+    // Destroy the game object
+    if (this.gameObject) {
+      this.gameObject.destroy();
+    }
+    console.log(`[DataEntry] Entry ${this.uuid} unloaded`);
   }
 
-  public addNewDataAsset(dataAsset: DataAsset): void {
-    // Add the asset to the dataAssets array
+  public async addDataAsset(dataAsset: DataAsset): Promise<void> {
     this.dataAssets.push(dataAsset);
     
-    // If the entry has an instance and is loaded, load the asset
-    if (this.instance) {
-      // Load the asset
-      dataAsset.load(this.instance, this.context).then(() => {
-        console.log(`DataEntry: Asset "${dataAsset.title}" loaded successfully`);
-        
-        // Register with persistent data if available
-        if (this.persistentData) {
-          dataAsset.registerWithPersistentData(this.persistentData);
-          
-          // Add event listener for position changes
-          dataAsset.onPositionChanged.addEventListener(this.handleAssetPositionChanged);
-          
-          // Update this entry's data in persistent storage
-          this.persistentData.updateObjectData(this.uuid);
-        }
-        
-        // Set the asset's visibility based on the entry's active state
-        dataAsset.setIsActiveWithAnimation(this._isActive);
-      });
+    // Only load if not already loaded
+    if (!dataAsset.gameObject) {
+      // Create a transform for the new asset
+      const assetTransform = {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      await dataAsset.load(this.context, assetTransform, dataAsset.modelURL);
+    }
+    
+    dataAsset.isActive = { newState: this._isActive, animate: true };
+    console.log(`[DataEntry] Added new asset to entry ${this.uuid}`);
+  }
+
+  public async removeDataAsset(dataAsset: DataAsset): Promise<void> {
+    const index = this.dataAssets.indexOf(dataAsset);
+    if (index !== -1) {
+      await dataAsset.unload();
+      this.dataAssets.splice(index, 1);
+      console.log(`[DataEntry] Removed asset from entry ${this.uuid}`);
     }
   }
 
-  private handleSelectionChanged = (event: { object: SelectableObject; isSelected: boolean }) => {
-    // Always emit the selection event when the selection state changes
-    // This ensures the DataCluster can properly manage which entries are active
-    this.onSelected.invoke({ entry: this, isSelected: event.isSelected });
-    
-    // Update our active state to match the selection state
-    if (this._isActive !== event.isSelected) {
-      this.isActive = event.isSelected;
-      
-      // Mark as pending changes but don't force save immediately
-      // The debounce mechanism will handle saving at appropriate intervals
+  public async createDataAsset(): Promise<DataAsset> {
+    const asset = new DataAsset(this.dataAssetPrefab);
+    // Only add the component if it's not already added
+    if (!this.gameObject.getComponent(DataAsset)) {
+      this.gameObject.addComponent(asset);
     }
-  };
-
-  // Called when dragging finishes
-  public onDragEnd(): void {
-    if (!this.instance) return;
-    
-    // Update position data and save
-    this.onPositionChanged();
-  }
-
-  public unload(): void {
-    if (this.selectable) {
-      this.selectable.onSelectionChanged.removeEventListener(this.handleSelectionChanged);
-    }
-    
-    // Unregister from persistent data
-    if (this.persistentData && this.uuid) {
-      this.persistentData.unregisterObject(this.uuid);
-      
-      // Remove event listeners
-      for (const asset of this.dataAssets) {
-        asset.onPositionChanged.removeEventListener(this.handleAssetPositionChanged);
-      }
-      
-      this.persistentData = null;
-    }
-    
-    for (const asset of this.dataAssets) {
-      asset.unload();
-    }
-    this.instance?.destroy();
-    this.instance = null;
-    this.dragControls = null;
-    this.eventHandler = null;
+    return asset;
   }
 }
+

@@ -28,11 +28,6 @@ export class ModelGenerator extends Behaviour {
     start() {
         console.log("ModelGenerator: Initializing...");
         console.log("ModelGenerator: UserArchive reference:", this.userArchive);
-        if (this.userArchive) {
-            console.log("ModelGenerator: UserArchive has clusters:", this.userArchive.hasDataClusters());
-            console.log("ModelGenerator: First cluster:", this.userArchive.getFirstDataCluster());
-        }
-        this.updateStatusText("");
     }
 
     onDestroy() {
@@ -230,12 +225,12 @@ export class ModelGenerator extends Behaviour {
         }
 
         // Wait for archive to load if needed
-        if (!this.userArchive.hasDataClusters()) {
+        if (!this.userArchive.hasClusters()) {
             console.log("ModelGenerator: Waiting for UserArchive to load...");
             await this.userArchive.loadArchive();
             
             // Double check after loading
-            if (!this.userArchive.hasDataClusters()) {
+            if (!this.userArchive.hasClusters()) {
                 const errorMessage = "Cannot spawn model - No data clusters available after loading archive";
                 console.error("ModelGenerator:", errorMessage);
                 this.updateStatusText(`Error: ${errorMessage}`);
@@ -245,25 +240,10 @@ export class ModelGenerator extends Behaviour {
 
         // Try to select first cluster if none is selected
         if (!this.userArchive.selectedDataCluster) {
-            const firstCluster = this.userArchive.getFirstDataCluster();
-            if (firstCluster) {
-                console.log("ModelGenerator: Selected first cluster:", firstCluster.title);
-                this.userArchive.selectedDataCluster = firstCluster;
-                
-                // Select the first entry in the cluster if none is active
-                if (!firstCluster.dataEntries.some(entry => entry.isActive)) {
-                    const firstEntry = firstCluster.dataEntries[0];
-                    if (firstEntry) {
-                        firstEntry.isActive = true;
-                        console.log("ModelGenerator: Activated first entry:", firstEntry.title);
-                    }
-                }
-            } else {
-                const errorMessage = "Cannot spawn model - No data clusters available";
-                console.error("ModelGenerator:", errorMessage);
-                this.updateStatusText(`Error: ${errorMessage}`);
-                return;
-            }
+            const errorMessage = "Cannot spawn model - No data cluster selected";
+            console.error("ModelGenerator:", errorMessage);
+            this.updateStatusText(`Error: ${errorMessage}`);
+            return;
         }
 
         // Get the selected data cluster
@@ -281,7 +261,7 @@ export class ModelGenerator extends Behaviour {
             // If no entry is active, try to activate the first one
             if (selectedCluster.dataEntries.length > 0) {
                 entryToUse = selectedCluster.dataEntries[0];
-                entryToUse.isActive = true;
+                entryToUse.isActive = { newState: true, animate: true };
             } else {
                 const errorMessage = "Cannot spawn model - No entries available in selected cluster";
                 console.error("ModelGenerator:", errorMessage);
@@ -305,61 +285,23 @@ export class ModelGenerator extends Behaviour {
 
         try {
             // Create the DataAsset
-            const dataAsset = new DataAsset(assetData, this.userArchive.dataAssetPrefab);
-            
-            // Add the DataAsset to the active entry
-            await this.addNewDataAssetToEntry(entryToUse, dataAsset);
-            
-            // Ensure the model is at 0,0,0
-            if (dataAsset.instance) {
-                dataAsset.instance.position.set(0, 0, 0);
-                if (dataAsset.modelInstance) {
-                    dataAsset.modelInstance.position.set(0, 0, 0);
-                }
+            if (!this.userArchive.dataAssetPrefab) {
+                throw new Error("No data asset prefab available");
             }
             
-            console.log(`ModelGenerator: Model spawned and added to entry "${entryToUse.title}"`);
+            const dataAsset = await entryToUse.createDataAsset();
+            dataAsset.uuid = assetData.UUID;
+            dataAsset.modelURL = assetData.URL;
+            
+            // Add the DataAsset to the active entry
+            await entryToUse.addDataAsset(dataAsset);
+            
+            console.log(`ModelGenerator: Model spawned successfully`);
             this.updateStatusText("Model spawned successfully");
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown error spawning model";
             console.error("ModelGenerator: Error spawning model -", errorMessage);
             this.updateStatusText(`Error: ${errorMessage}`);
-        }
-    }
-
-    // Helper method to add a new DataAsset to a DataEntry
-    private async addNewDataAssetToEntry(entry: any, dataAsset: DataAsset): Promise<void> {
-        // Add the asset to the entry's dataAssets array
-        entry.dataAssets.push(dataAsset);
-        
-        // If the entry has an instance and is loaded, load the asset
-        if (entry.instance) {
-            try {
-                // Load the asset
-                await dataAsset.load(entry.instance, entry.context);
-                console.log(`ModelGenerator: Asset "${dataAsset.title}" loaded successfully`);
-                
-                // Register with persistent data if available
-                if (entry.persistentData) {
-                    dataAsset.registerWithPersistentData(entry.persistentData);
-                    
-                    // Add event listener for position changes
-                    dataAsset.onPositionChanged.addEventListener(entry.handleAssetPositionChanged);
-                    
-                    // Update the entry's data in persistent storage
-                    entry.persistentData.updateObjectData(entry.uuid);
-                }
-                
-                // Set the asset's visibility based on the entry's active state
-                dataAsset.setIsActiveWithAnimation(entry.isActive);
-            } catch (error) {
-                // Remove the asset from the array since loading failed
-                const index = entry.dataAssets.indexOf(dataAsset);
-                if (index > -1) {
-                    entry.dataAssets.splice(index, 1);
-                }
-                throw error; // Re-throw to be handled by the caller
-            }
         }
     }
 }
